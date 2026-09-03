@@ -1,0 +1,16 @@
+{
+  "name": "sistema-pos-erp-hotel-puerto-limon",
+  "version": "1.0.0",
+  "description": "Sistema POS-ERP Modular para Operación Hotelera - Hotel Puerto Limón",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "prisma:seed": "npm --prefix backend run prisma:seed",
+    "prisma:push": "npm --prefix backend run prisma:push"
+  },
+  "keywords": ["pos", "erp", "hotel", "react", "nodejs", "prisma", "postgresql"],
+  "author": "Chris",
+  "license": "ISC"
+}

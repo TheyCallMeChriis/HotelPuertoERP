@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos_erp_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: pos_admin
+      POSTGRES_PASSWORD: pos_password_2026
+      POSTGRES_DB: pos_erp_hotel
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+    driver: local

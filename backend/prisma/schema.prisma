@@ -1,0 +1,604 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. SEGURIDAD Y ACCESO (RBAC + AUDITORÍA)
+// ==========================================
+
+model User {
+  id           String      @id @default(cuid())
+  username     String      @unique
+  passwordHash String
+  nombre       String
+  email        String      @unique
+  activo       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  roles                 UserRole[]
+  auditLogs             AuditLog[]
+  ventasRealizadas      Sale[]             @relation("VentaUsuario")
+  ventasAnuladas        Sale[]             @relation("VentaAnuladaUsuario")
+  aperturasCaja         CashShift[]
+  movimientosCaja       CashMovement[]
+  movimientosInventario InventoryMovement[]
+  trasladosRealizados   WarehouseTransfer[]
+  ajustesRealizados     InventoryAdjustment[] @relation("AjusteCreador")
+  ajustesAprobados      InventoryAdjustment[] @relation("AjusteAprobador")
+  ordenesCompra         PurchaseOrder[]
+  recepcionesCompra     PurchaseReceipt[]
+
+  @@map("usuarios")
+}
+
+model Role {
+  id          String         @id @default(cuid())
+  nombre      String         @unique
+  descripcion String?
+  activo      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  modulo      String           // e.g. "VENTAS", "CAJA", "INVENTARIO", "COMPRAS", "USUARIOS"
+  accion      String           // e.g. "VER", "CREAR", "EDITAR", "ANULAR", "DESCUENTOS"
+  descripcion String?
+
+  roles       RolePermission[]
+
+  @@unique([modulo, accion])
+  @@map("permisos")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("usuario_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("rol_permisos")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  accion    String   // e.g. "LOGIN", "VENTA_CREADA", "VENTA_ANULADA", "AJUSTE_INVENTARIO"
+  entidad   String   // e.g. "Sale", "InventoryMovement", "CashShift"
+  entidadId String?
+  detalle   String?  @db.Text
+  ip        String?
+  fecha     DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("bitacora_auditoria")
+}
+
+// ==========================================
+// 2. CATÁLOGOS COMERCIALES
+// ==========================================
+
+model Category {
+  id          String    @id @default(cuid())
+  nombre      String    @unique
+  descripcion String?
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  products    Product[]
+
+  @@map("categorias")
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  codigo       String      @unique
+  nombre       String
+  descripcion  String?
+  categoriaId  String
+  precioVenta  Decimal     @db.Decimal(12, 2)
+  costo        Decimal     @default(0.00) @db.Decimal(12, 2)
+  impuesto     Decimal     @default(13.00) @db.Decimal(5, 2) // % IVA por defecto
+  codigoBarras String?
+  esServicio   Boolean     @default(false)
+  activo       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  categoria             Category                @relation(fields: [categoriaId], references: [id])
+  saleDetails           SaleDetail[]
+  stock                 Stock[]
+  inventoryMovements    InventoryMovement[]
+  transferDetails       WarehouseTransferDetail[]
+  adjustmentDetails     InventoryAdjustmentDetail[]
+  purchaseOrderDetails  PurchaseOrderDetail[]
+  receiptDetails        PurchaseReceiptDetail[]
+
+  @@map("productos")
+}
+
+model Customer {
+  id                 String   @id @default(cuid())
+  tipoIdentificacion String   @default("CEDULA_FISICA") // CEDULA_FISICA, JURIDICA, PASAPORTE
+  identificacion     String   @unique
+  nombre             String
+  email              String?
+  telefono           String?
+  direccion          String?
+  limiteCredito      Decimal  @default(0.00) @db.Decimal(12, 2)
+  diasCredito        Int      @default(0)
+  creditoActivo      Boolean  @default(false)
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  ventas             Sale[]
+
+  @@map("clientes")
+}
+
+// ==========================================
+// 3. PUNTOS DE VENTA, CAJAS Y TURNOS
+// ==========================================
+
+model CashRegister {
+  id        String       @id @default(cuid())
+  codigo    String       @unique
+  nombre    String
+  ubicacion String?
+  activo    Boolean      @default(true)
+
+  shifts    CashShift[]
+  points    PointOfSale[]
+
+  @@map("cajas")
+}
+
+model PointOfSale {
+  id               String       @id @default(cuid())
+  codigo           String       @unique
+  nombre           String
+  departamento     String       // e.g. "RESTAURANTE", "BAR", "RECEPCION", "SOUVENIRS"
+  cajaId           String
+  bodegaDefectoId  String
+  activo           Boolean      @default(true)
+
+  caja             CashRegister @relation(fields: [cajaId], references: [id])
+  bodegaDefecto    Warehouse    @relation(fields: [bodegaDefectoId], references: [id])
+  ventas           Sale[]
+
+  @@map("puntos_venta")
+}
+
+model CashShift {
+  id              String         @id @default(cuid())
+  cajaId          String
+  usuarioId       String
+  fechaApertura   DateTime       @default(now())
+  montoInicial    Decimal        @db.Decimal(12, 2)
+  fechaCierre     DateTime?
+  montoContado    Decimal?       @db.Decimal(12, 2)
+  montoEsperado   Decimal?       @db.Decimal(12, 2)
+  diferencia      Decimal?       @db.Decimal(12, 2) // Sobrante (+) o Faltante (-)
+  estado          String         @default("ABIERTA") // "ABIERTA", "CERRADA"
+  notas           String?
+
+  caja            CashRegister   @relation(fields: [cajaId], references: [id])
+  usuario         User           @relation(fields: [usuarioId], references: [id])
+  movements       CashMovement[]
+  ventas          Sale[]
+
+  @@map("aperturas_caja")
+}
+
+model CashMovement {
+  id            String    @id @default(cuid())
+  cashShiftId   String
+  usuarioId     String
+  tipo          String    // "ENTRADA_EXTRAORDINARIA", "SALIDA_EXTRAORDINARIA"
+  monto         Decimal   @db.Decimal(12, 2)
+  motivo        String
+  fecha         DateTime  @default(now())
+
+  cashShift     CashShift @relation(fields: [cashShiftId], references: [id])
+  usuario       User      @relation(fields: [usuarioId], references: [id])
+
+  @@map("movimientos_caja")
+}
+
+// ==========================================
+// 4. VENTAS, DETALLE Y FORMAS DE PAGO
+// ==========================================
+
+model PaymentMethod {
+  id        String        @id @default(cuid())
+  codigo    String        @unique // "EFECTIVO", "TARJETA", "SINPE_MOVIL", "CREDITO", "CARGO_HABITACION"
+  nombre    String
+  activo    Boolean       @default(true)
+
+  pagos     SalePayment[]
+
+  @@map("formas_pago")
+}
+
+model Sale {
+  id                 String        @id @default(cuid())
+  consecutivo        String        @unique // e.g. "VTA-000001"
+  cashShiftId        String
+  pointOfSaleId      String
+  usuarioId          String
+  customerId         String?
+  subtotal           Decimal       @db.Decimal(12, 2)
+  descuento          Decimal       @default(0.00) @db.Decimal(12, 2)
+  impuesto           Decimal       @db.Decimal(12, 2)
+  total              Decimal       @db.Decimal(12, 2)
+  estado             String        @default("COMPLETADA") // "COMPLETADA", "ANULADA", "SUSPENDIDA"
+  motivoAnulacion    String?
+  usuarioAnulacionId String?
+  fechaAnulacion     DateTime?
+  notas              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  cashShift          CashShift     @relation(fields: [cashShiftId], references: [id])
+  pointOfSale        PointOfSale   @relation(fields: [pointOfSaleId], references: [id])
+  usuario            User          @relation("VentaUsuario", fields: [usuarioId], references: [id])
+  usuarioAnulacion   User?         @relation("VentaAnuladaUsuario", fields: [usuarioAnulacionId], references: [id])
+  customer           Customer?     @relation(fields: [customerId], references: [id])
+  details            SaleDetail[]
+  payments           SalePayment[]
+  cargoHabitacion    RoomCharge?
+
+  @@map("ventas")
+}
+
+model SaleDetail {
+  id             String   @id @default(cuid())
+  saleId         String
+  productId      String
+  cantidad       Decimal  @db.Decimal(12, 3)
+  precioUnitario Decimal  @db.Decimal(12, 2)
+  descuento      Decimal  @default(0.00) @db.Decimal(12, 2)
+  subtotal       Decimal  @db.Decimal(12, 2)
+  impuesto       Decimal  @db.Decimal(12, 2)
+  total          Decimal  @db.Decimal(12, 2)
+  notas          String?
+
+  sale           Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id])
+
+  @@map("detalle_ventas")
+}
+
+model SalePayment {
+  id              String        @id @default(cuid())
+  saleId          String
+  paymentMethodId String
+  monto           Decimal       @db.Decimal(12, 2)
+  referencia      String?       // Voucher, número de transferencia, etc.
+  createdAt       DateTime      @default(now())
+
+  sale            Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@map("pagos_venta")
+}
+
+// ==========================================
+// 5. INVENTARIO, MULTIBODEGA Y KARDEX
+// ==========================================
+
+model Warehouse {
+  id          String   @id @default(cuid())
+  codigo      String   @unique
+  nombre      String
+  ubicacion   String?
+  activo      Boolean  @default(true)
+
+  stocks              Stock[]
+  puntosVenta         PointOfSale[]
+  movimientos         InventoryMovement[]
+  trasladosOrigen     WarehouseTransfer[]   @relation("BodegaOrigen")
+  trasladosDestino    WarehouseTransfer[]   @relation("BodegaDestino")
+  ajustes             InventoryAdjustment[]
+  ordenesCompra       PurchaseOrder[]
+  recepcionesCompra   PurchaseReceipt[]
+
+  @@map("bodegas")
+}
+
+model Stock {
+  id          String    @id @default(cuid())
+  warehouseId String
+  productId   String
+  cantidad    Decimal   @default(0.000) @db.Decimal(12, 3)
+  stockMinimo Decimal   @default(0.000) @db.Decimal(12, 3)
+  stockMaximo Decimal   @default(1000.000) @db.Decimal(12, 3)
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([warehouseId, productId])
+  @@map("existencias")
+}
+
+model InventoryMovement {
+  id                  String    @id @default(cuid())
+  warehouseId         String
+  productId           String
+  tipo                String    // ENTRADA_COMPRA, SALIDA_VENTA, TRASLADO_ORIGEN, TRASLADO_DESTINO, AJUSTE_POSITIVO, AJUSTE_NEGATIVO, MERMA
+  cantidad            Decimal   @db.Decimal(12, 3)
+  saldoAnterior       Decimal   @db.Decimal(12, 3)
+  saldoNuevo          Decimal   @db.Decimal(12, 3)
+  costoUnitario       Decimal   @default(0.00) @db.Decimal(12, 2)
+  documentoReferencia String?   // Consecutivo de venta, orden, o traslado
+  motivo              String?
+  usuarioId           String
+  fecha               DateTime  @default(now())
+
+  warehouse           Warehouse @relation(fields: [warehouseId], references: [id])
+  product             Product   @relation(fields: [productId], references: [id])
+  usuario             User      @relation(fields: [usuarioId], references: [id])
+
+  @@map("movimientos_inventario")
+}
+
+model WarehouseTransfer {
+  id                 String                    @id @default(cuid())
+  consecutivo        String                    @unique // e.g. "TRF-000001"
+  warehouseOrigenId  String
+  warehouseDestinoId String
+  usuarioId          String
+  estado             String                    @default("COMPLETADO") // PENDIENTE, COMPLETADO, CANCELADO
+  notas              String?
+  createdAt          DateTime                  @default(now())
+
+  warehouseOrigen    Warehouse                 @relation("BodegaOrigen", fields: [warehouseOrigenId], references: [id])
+  warehouseDestino   Warehouse                 @relation("BodegaDestino", fields: [warehouseDestinoId], references: [id])
+  usuario            User                      @relation(fields: [usuarioId], references: [id])
+  details            WarehouseTransferDetail[]
+
+  @@map("traslados_bodega")
+}
+
+model WarehouseTransferDetail {
+  id         String            @id @default(cuid())
+  transferId String
+  productId  String
+  cantidad   Decimal           @db.Decimal(12, 3)
+
+  transfer   WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product    Product           @relation(fields: [productId], references: [id])
+
+  @@map("detalle_traslados")
+}
+
+model InventoryAdjustment {
+  id           String                      @id @default(cuid())
+  consecutivo  String                      @unique // e.g. "AJU-000001"
+  warehouseId  String
+  tipo         String                      // "POSITIVO", "NEGATIVO"
+  motivo       String
+  usuarioId    String
+  aprobadorId  String?
+  createdAt    DateTime                    @default(now())
+
+  warehouse    Warehouse                   @relation(fields: [warehouseId], references: [id])
+  usuario      User                        @relation("AjusteCreador", fields: [usuarioId], references: [id])
+  aprobador    User?                       @relation("AjusteAprobador", fields: [aprobadorId], references: [id])
+  details      InventoryAdjustmentDetail[]
+
+  @@map("ajustes_inventario")
+}
+
+model InventoryAdjustmentDetail {
+  id            String              @id @default(cuid())
+  adjustmentId  String
+  productId     String
+  cantidad      Decimal             @db.Decimal(12, 3)
+  costoUnitario Decimal             @db.Decimal(12, 2)
+
+  adjustment    InventoryAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  product       Product             @relation(fields: [productId], references: [id])
+
+  @@map("detalle_ajustes")
+}
+
+// ==========================================
+// 6. COMPRAS Y PROVEEDORES
+// ==========================================
+
+model Supplier {
+  id             String          @id @default(cuid())
+  identificacion String          @unique
+  nombre         String
+  razonSocial    String?
+  email          String?
+  telefono       String?
+  direccion      String?
+  diasCredito    Int             @default(0)
+  activo         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+
+  purchaseOrders PurchaseOrder[]
+
+  @@map("proveedores")
+}
+
+model PurchaseOrder {
+  id             String                @id @default(cuid())
+  consecutivo    String                @unique // e.g. "OC-000001"
+  supplierId     String
+  warehouseId    String
+  usuarioId      String
+  fechaEmision   DateTime              @default(now())
+  fechaEsperada  DateTime?
+  estado         String                @default("APROBADA") // BORRADOR, APROBADA, RECIBIDA_PARCIAL, RECIBIDA_TOTAL, CANCELADA
+  subtotal       Decimal               @db.Decimal(12, 2)
+  impuesto       Decimal               @db.Decimal(12, 2)
+  total          Decimal               @db.Decimal(12, 2)
+  notas          String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse      Warehouse             @relation(fields: [warehouseId], references: [id])
+  usuario        User                  @relation(fields: [usuarioId], references: [id])
+  details        PurchaseOrderDetail[]
+  receipts       PurchaseReceipt[]
+
+  @@map("ordenes_compra")
+}
+
+model PurchaseOrderDetail {
+  id                 String        @id @default(cuid())
+  purchaseOrderId    String
+  productId          String
+  cantidadSolicitada Decimal       @db.Decimal(12, 3)
+  cantidadRecibida   Decimal       @default(0.000) @db.Decimal(12, 3)
+  precioUnitario     Decimal       @db.Decimal(12, 2)
+  total              Decimal       @db.Decimal(12, 2)
+
+  purchaseOrder      PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product            Product       @relation(fields: [productId], references: [id])
+
+  @@map("detalle_ordenes_compra")
+}
+
+model PurchaseReceipt {
+  id               String                  @id @default(cuid())
+  consecutivo      String                  @unique // e.g. "REC-000001"
+  purchaseOrderId  String
+  facturaProveedor String?
+  warehouseId      String
+  usuarioId        String
+  fechaRecepcion   DateTime                @default(now())
+  notas            String?
+
+  purchaseOrder    PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
+  warehouse        Warehouse               @relation(fields: [warehouseId], references: [id])
+  usuario          User                    @relation(fields: [usuarioId], references: [id])
+  details          PurchaseReceiptDetail[]
+
+  @@map("recepciones_compra")
+}
+
+model PurchaseReceiptDetail {
+  id               String          @id @default(cuid())
+  receiptId        String
+  productId        String
+  cantidadRecibida Decimal         @db.Decimal(12, 3)
+  costoUnitario    Decimal         @db.Decimal(12, 2)
+
+  receipt          PurchaseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product          Product         @relation(fields: [productId], references: [id])
+
+  @@map("detalle_recepciones")
+}
+
+// ==========================================
+// 7. INTEGRACIÓN HOTELERA / PMS
+// ==========================================
+
+model Room {
+  id          String        @id @default(cuid())
+  numero      String        @unique // e.g. "101", "102"
+  tipo        String        // e.g. "ESTANDAR", "SUITE", "VILLA"
+  estado      String        @default("DISPONIBLE") // DISPONIBLE, OCUPADA, MANTENIMIENTO
+  activo      Boolean       @default(true)
+
+  guests      Guest[]
+  roomCharges RoomCharge[]
+
+  @@map("habitaciones")
+}
+
+model Guest {
+  id             String       @id @default(cuid())
+  identificacion String       @unique
+  nombreCompleto String
+  habitacionId   String
+  checkIn        DateTime     @default(now())
+  checkOut       DateTime?
+  estado         String       @default("HOSPEDADO") // HOSPEDADO, SALIO
+
+  habitacion     Room         @relation(fields: [habitacionId], references: [id])
+  roomCharges    RoomCharge[]
+
+  @@map("huespedes")
+}
+
+model RoomCharge {
+  id              String                @id @default(cuid())
+  saleId          String                @unique
+  roomId          String
+  guestId         String
+  monto           Decimal               @db.Decimal(12, 2)
+  transaccionUuid String                @unique // Token de idempotencia único para evitar duplicación (PMS-005)
+  estadoPMS       String                @default("PENDIENTE") // PENDIENTE, CONFIRMADO, ERROR
+  reintentos      Int                   @default(0)
+  respuestaPMS    String?               @db.Text
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  sale            Sale                  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  room            Room                  @relation(fields: [roomId], references: [id])
+  guest           Guest                 @relation(fields: [guestId], references: [id])
+  queueItems      PMSIntegrationQueue[]
+
+  @@map("cargos_habitacion")
+}
+
+model PMSIntegrationQueue {
+  id           String     @id @default(cuid())
+  roomChargeId String
+  endpoint     String
+  payload      String     @db.Text
+  intentos     Int        @default(0)
+  estado       String     @default("PENDIENTE") // PENDIENTE, PROCESADO, FALLIDO
+  ultimoError  String?    @db.Text
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roomCharge   RoomCharge @relation(fields: [roomChargeId], references: [id], onDelete: Cascade)
+
+  @@map("cola_integracion_pms")
+}
+
+// ==========================================
+// 8. CONFIGURACIÓN Y PARÁMETROS DEL SISTEMA
+// ==========================================
+
+model SystemParameter {
+  id          String   @id @default(cuid())
+  clave       String   @unique // e.g. "HOTEL_NAME", "DEFAULT_TAX_RATE", "CURRENCY_SYMBOL"
+  valor       String
+  descripcion String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("parametros_sistema")
+}
