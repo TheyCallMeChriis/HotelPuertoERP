@@ -554,7 +554,7 @@ model Guest {
 
 model RoomCharge {
   id              String                @id @default(cuid())
-  saleId          String                @unique
+  saleId          String?               @unique
   roomId          String
   guestId         String
   monto           Decimal               @db.Decimal(12, 2)
@@ -565,7 +565,7 @@ model RoomCharge {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  sale            Sale                  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale            Sale?                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
   room            Room                  @relation(fields: [roomId], references: [id])
   guest           Guest                 @relation(fields: [guestId], references: [id])
   queueItems      PMSIntegrationQueue[]

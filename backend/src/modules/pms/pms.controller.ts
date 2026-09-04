@@ -36,9 +36,18 @@ export const getHabitacionesOcupadas = async (_req: AuthenticatedRequest, res: R
 export const enviarCargoPMS = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { saleId, roomId, guestId, monto, transaccionUuid, simularError } = req.body;
 
-  if (!saleId || !roomId || !guestId || !monto) {
-    res.status(400).json({ success: false, message: 'Venta, habitación, huésped y monto son obligatorios' });
+  if (!roomId || !guestId || !monto) {
+    res.status(400).json({ success: false, message: 'Habitación, huésped y monto son obligatorios' });
     return;
+  }
+
+  // Verificar si saleId corresponde a una venta real en la base de datos
+  let validSaleId: string | null = null;
+  if (saleId && typeof saleId === 'string' && !saleId.startsWith('SIM-')) {
+    const ventaExistente = await prisma.sale.findUnique({ where: { id: saleId } });
+    if (ventaExistente) {
+      validSaleId = ventaExistente.id;
+    }
   }
 
   // Idempotencia: Si ya existe un cargo con este UUID, se devuelve el registro existente sin duplicar (PMS-005)
@@ -66,7 +75,7 @@ export const enviarCargoPMS = async (req: AuthenticatedRequest, res: Response): 
 
   const nuevoCargo = await prisma.roomCharge.create({
     data: {
-      saleId,
+      saleId: validSaleId,
       roomId,
       guestId,
       monto,

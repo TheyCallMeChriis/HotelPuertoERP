@@ -43,7 +43,6 @@ export const PMS: React.FC = () => {
     }
 
     const res = await api.pms.enviarCargo({
-      saleId: `SIM-SALE-${Date.now()}`,
       roomId: hab.id,
       guestId: hab.huesped.id,
       monto: montoCargo,
