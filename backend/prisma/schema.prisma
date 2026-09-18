@@ -559,7 +559,7 @@ model RoomCharge {
   guestId         String
   monto           Decimal               @db.Decimal(12, 2)
   transaccionUuid String                @unique // Token de idempotencia único para evitar duplicación (PMS-005)
-  estadoPMS       String                @default("PENDIENTE") // PENDIENTE, CONFIRMADO, ERROR
+  estadoPMS       String                @default("PENDIENTE") // PENDIENTE, CONFIRMADO, ERROR, ANULADO (simulador)
   reintentos      Int                   @default(0)
   respuestaPMS    String?               @db.Text
   createdAt       DateTime              @default(now())
@@ -579,7 +579,7 @@ model PMSIntegrationQueue {
   endpoint     String
   payload      String     @db.Text
   intentos     Int        @default(0)
-  estado       String     @default("PENDIENTE") // PENDIENTE, PROCESADO, FALLIDO
+  estado       String     @default("PENDIENTE") // PENDIENTE, PROCESADO, FALLIDO, CANCELADO
   ultimoError  String?    @db.Text
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

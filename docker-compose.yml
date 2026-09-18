@@ -4,11 +4,11 @@ services:
     container_name: pos_erp_postgres
     restart: always
     environment:
-      POSTGRES_USER: pos_admin
-      POSTGRES_PASSWORD: pos_password_2026
-      POSTGRES_DB: pos_erp_hotel
+      POSTGRES_USER: ${POSTGRES_USER:-pos_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD en el archivo .env de la raiz}
+      POSTGRES_DB: ${POSTGRES_DB:-pos_erp_hotel}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

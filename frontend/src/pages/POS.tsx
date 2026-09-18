@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { numberFromInput } from '../utils/number-input';
 import { useAuth } from '../context/AuthContext';
+import { calculateLine, sumMoney, toCents } from '../utils/sale-money';
 import {
   Search,
   ShoppingCart,
@@ -62,7 +64,7 @@ export const POS: React.FC = () => {
 
   // Modal de Pago
   const [mostrarModalPago, setMostrarModalPago] = useState(false);
-  const [pagosDivididos, setPagosDivididos] = useState<Array<{ paymentMethodId: string; monto: number; referencia: string }>>([]);
+  const [pagosDivididos, setPagosDivididos] = useState<Array<{ paymentMethodId: string; monto: number | string; referencia: string }>>([]);
   const [datosCargoHabitacion, setDatosCargoHabitacion] = useState<{ roomId: string; guestId: string }>({ roomId: '', guestId: '' });
   const [errorPago, setErrorPago] = useState<string | null>(null);
   const [procesandoVenta, setProcesandoVenta] = useState(false);
@@ -158,29 +160,22 @@ export const POS: React.FC = () => {
     }
 
     const precioUnitario = Number(prod.precioVenta);
-    const ivaPorc = Number(prod.impuesto) / 100;
 
     if (existente) {
       setCart(
         cart.map((item) => {
           if (item.product.id === prod.id) {
             const nuevaCant = item.cantidad + 1;
-            const sub = nuevaCant * item.precioUnitario - item.descuento;
-            const imp = sub * ivaPorc;
             return {
               ...item,
               cantidad: nuevaCant,
-              subtotal: sub,
-              impuesto: imp,
-              total: sub + imp,
+              ...calculateLine(nuevaCant, item.precioUnitario, Number(prod.impuesto), item.descuento),
             };
           }
           return item;
         })
       );
     } else {
-      const sub = precioUnitario;
-      const imp = sub * ivaPorc;
       setCart([
         ...cart,
         {
@@ -188,9 +183,7 @@ export const POS: React.FC = () => {
           cantidad: 1,
           precioUnitario,
           descuento: 0,
-          subtotal: sub,
-          impuesto: imp,
-          total: sub + imp,
+          ...calculateLine(1, precioUnitario, Number(prod.impuesto)),
         },
       ]);
     }
@@ -211,15 +204,14 @@ export const POS: React.FC = () => {
               return item;
             }
 
-            const ivaPorc = Number(item.product.impuesto) / 100;
-            const sub = nuevaCant * item.precioUnitario - item.descuento;
-            const imp = sub * ivaPorc;
+            if (toCents(item.descuento) > toCents(calculateLine(nuevaCant, item.precioUnitario, 0).subtotal)) {
+              alert('Reduzca el descuento antes de disminuir esta cantidad.');
+              return item;
+            }
             return {
               ...item,
               cantidad: nuevaCant,
-              subtotal: sub,
-              impuesto: imp,
-              total: sub + imp,
+              ...calculateLine(nuevaCant, item.precioUnitario, Number(item.product.impuesto), item.descuento),
             };
           }
           return item;
@@ -235,18 +227,21 @@ export const POS: React.FC = () => {
       return;
     }
 
+    const target = cart.find(item => item.product.id === productId);
+    if (!target) return;
+    if (!Number.isFinite(toCents(montoDesc))
+      || toCents(montoDesc) > toCents(calculateLine(target.cantidad, target.precioUnitario, 0).subtotal)) {
+      alert('Indique un descuento no negativo, con máximo dos decimales y menor o igual al importe de la línea.');
+      return;
+    }
+
     setCart(
       cart.map((item) => {
         if (item.product.id === productId) {
-          const ivaPorc = Number(item.product.impuesto) / 100;
-          const sub = item.cantidad * item.precioUnitario - montoDesc;
-          const imp = sub * ivaPorc;
           return {
             ...item,
             descuento: montoDesc,
-            subtotal: sub,
-            impuesto: imp,
-            total: sub + imp,
+            ...calculateLine(item.cantidad, item.precioUnitario, Number(item.product.impuesto), montoDesc),
           };
         }
         return item;
@@ -255,10 +250,10 @@ export const POS: React.FC = () => {
   };
 
   // Totales del carrito
-  const subtotalCart = cart.reduce((acc, item) => acc + item.subtotal, 0);
-  const impuestoCart = cart.reduce((acc, item) => acc + item.impuesto, 0);
-  const descuentoTotalCart = cart.reduce((acc, item) => acc + item.descuento, 0);
-  const totalCart = subtotalCart + impuestoCart;
+  const subtotalCart = sumMoney(cart.map(item => item.subtotal));
+  const impuestoCart = sumMoney(cart.map(item => item.impuesto));
+  const descuentoTotalCart = sumMoney(cart.map(item => item.descuento));
+  const totalCart = sumMoney([subtotalCart, impuestoCart]);
 
   // Abrir Modal de Cobro
   const abrirModalCobro = () => {
@@ -285,7 +280,7 @@ export const POS: React.FC = () => {
   const agregarFilaPago = () => {
     const restante = Math.max(
       0,
-      totalCart - pagosDivididos.reduce((sum, p) => sum + Number(p.monto || 0), 0)
+      (toCents(totalCart) - pagosDivididos.reduce((sum, p) => sum + toCents(p.monto || 0), 0)) / 100
     );
     const tarjeta = formasPago.find((f) => f.codigo === 'TARJETA') || formasPago[0];
     setPagosDivididos([
@@ -300,8 +295,12 @@ export const POS: React.FC = () => {
 
   // Confirmar Venta
   const confirmarVenta = async () => {
-    const totalPagos = pagosDivididos.reduce((sum, p) => sum + Number(p.monto || 0), 0);
-    if (Math.abs(totalPagos - totalCart) > 0.05) {
+    if (pagosDivididos.length === 0 || pagosDivididos.some(p => !Number.isFinite(toCents(p.monto)) || numberFromInput(p.monto) <= 0)) {
+      setErrorPago('Cada pago debe ser positivo y tener como máximo dos decimales.');
+      return;
+    }
+    const totalPagos = sumMoney(pagosDivididos.map(p => p.monto));
+    if (toCents(totalPagos) !== toCents(totalCart)) {
       setErrorPago(`El total pagado (₡${totalPagos.toLocaleString()}) debe coincidir exactamente con el total de la venta (₡${totalCart.toLocaleString()})`);
       return;
     }
@@ -669,7 +668,7 @@ export const POS: React.FC = () => {
                           <button
                             onClick={() => {
                               const desc = prompt('Ingrese monto de descuento:', String(item.descuento));
-                              if (desc !== null) aplicarDescuento(item.product.id, Number(desc) || 0);
+                              if (desc !== null) aplicarDescuento(item.product.id, Number(desc));
                             }}
                             className="text-[10px] text-emerald-600 hover:underline"
                           >
@@ -787,9 +786,11 @@ export const POS: React.FC = () => {
                         <input
                           type="number"
                           value={pago.monto}
+                          min="0"
+                          step="0.01"
                           onChange={(e) => {
                             const newPagos = [...pagosDivididos];
-                            newPagos[index].monto = Number(e.target.value);
+                            newPagos[index].monto = e.target.value;
                             setPagosDivididos(newPagos);
                           }}
                           className="w-full text-xs border rounded-lg p-2 font-bold text-gray-900"

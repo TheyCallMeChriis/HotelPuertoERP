@@ -5,15 +5,15 @@ import {
   reintentarCargoPMS,
   getConciliacionPMS,
 } from './pms.controller';
-import { authenticateToken } from '../../middleware/auth.middleware';
+import { authenticateToken, requirePermission } from '../../middleware/auth.middleware';
 
 const router = Router();
 
 router.use(authenticateToken);
 
-router.get('/habitaciones', getHabitacionesOcupadas);
-router.post('/cargo', enviarCargoPMS);
-router.post('/reintentar/:id', reintentarCargoPMS);
-router.get('/conciliacion', getConciliacionPMS);
+router.get('/habitaciones', requirePermission('HOTEL_PMS', 'VER'), getHabitacionesOcupadas);
+router.post('/cargo', requirePermission('HOTEL_PMS', 'CREAR'), enviarCargoPMS);
+router.post('/reintentar/:id', requirePermission('HOTEL_PMS', 'CREAR'), reintentarCargoPMS);
+router.get('/conciliacion', requirePermission('HOTEL_PMS', 'VER'), getConciliacionPMS);
 
 export default router;

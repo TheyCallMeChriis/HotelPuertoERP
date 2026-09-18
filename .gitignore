@@ -7,7 +7,9 @@ build/
 # Entorno y credenciales
 .env
 .env.local
+.env.*
 *.env
+!.env.example
 
 # Logs
 npm-debug.log*
@@ -15,6 +17,7 @@ yarn-debug.log*
 yarn-error.log*
 logs/
 *.log
+tmp/
 
 # Base de datos y respaldos locales
 *.sql.bak

@@ -1,0 +1,744 @@
+[
+  {
+    "id": "GEN-001",
+    "prioridad": "Alta",
+    "avance": "100",
+    "requisito": "Autenticación",
+    "evidencia": "Login con Zod, bcrypt, usuario activo y JWT; controlador y pantalla presentes."
+  },
+  {
+    "id": "GEN-002",
+    "prioridad": "Alta",
+    "avance": "0",
+    "requisito": "Administrar usuarios",
+    "evidencia": "Modelo y seed presentes, pero faltan endpoints y pantalla de creación, edición e inactivación."
+  },
+  {
+    "id": "GEN-003",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Roles y permisos",
+    "evidencia": "Middleware real, sin administración; seed asigna permisos solo a administrador, cajero y bodega; cajero no puede cerrar caja."
+  },
+  {
+    "id": "GEN-004",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Puntos de venta, cajas, bodegas y departamentos",
+    "evidencia": "Asociaciones y consultas presentes; configuración depende del seed; departamento es texto sin catálogo administrable."
+  },
+  {
+    "id": "GEN-005",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Productos y servicios",
+    "evidencia": "API crea, actualiza e inactiva; no hay pantalla de mantenimiento y faltan validaciones numéricas completas."
+  },
+  {
+    "id": "GEN-006",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Búsqueda de catálogo",
+    "evidencia": "Backend busca por código, nombre y barras; filtros undefined del POS impiden el funcionamiento habitual."
+  },
+  {
+    "id": "GEN-007",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Clientes y proveedores",
+    "evidencia": "API crea y consulta; faltan edición, inactivación y pantallas de mantenimiento."
+  },
+  {
+    "id": "GEN-008",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Autor y fechas de cambios",
+    "evidencia": "Operaciones y auditoría guardan autor/fecha; cobertura incompleta y auditoría puede fallar sin impedir la operación."
+  },
+  {
+    "id": "GEN-009",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Exportaciones",
+    "evidencia": "CSV en tres reportes; faltan escape robusto, filtros fiables y exportación general; no existe generador PDF de reportes."
+  },
+  {
+    "id": "GEN-010",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Preservación de historial",
+    "evidencia": "No hay rutas DELETE y productos admiten inactivación; faltan flujos de inactivación para otros catálogos."
+  },
+  {
+    "id": "POS-001",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Registrar venta",
+    "evidencia": "API y pantalla con consecutivo, detalles, pagos y usuario; fallos de filtros, validación y concurrencia pendientes."
+  },
+  {
+    "id": "POS-002",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Agregar productos",
+    "evidencia": "Carrito y accesos por tarjetas presentes; filtros undefined bloquean la carga normal del catálogo POS."
+  },
+  {
+    "id": "POS-003",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Modificar cantidades",
+    "evidencia": "Recalcula cantidades y totales; no revalida que un descuento previo siga siendo válido al bajar cantidad."
+  },
+  {
+    "id": "POS-004",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Descuentos autorizados",
+    "evidencia": "Valida descuento explícito, pero acepta precioUnitario reducido sin permiso; interfaz solo por monto y sin límites suficientes."
+  },
+  {
+    "id": "POS-005",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Observaciones",
+    "evidencia": "Backend y esquema aceptan notas de línea/venta; estado notasVenta sin campo editable y sin visualización en comprobante."
+  },
+  {
+    "id": "POS-006",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Suspender y retomar venta",
+    "evidencia": "Estado SUSPENDIDA comentado en modelo; no hay endpoints ni persistencia del carrito para este flujo."
+  },
+  {
+    "id": "POS-007",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Anulación autorizada",
+    "evidencia": "Permiso, motivo y reintegro presentes; no revierte PMS ni resuelve ventas de turnos cerrados; carrera de doble anulación."
+  },
+  {
+    "id": "POS-008",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Reimpresión",
+    "evidencia": "Historial abre comprobante existente; usa window.print sin diseño específico de impresión."
+  },
+  {
+    "id": "POS-009",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Formas de pago",
+    "evidencia": "Cinco formas disponibles; crédito no autorizado se acepta y pagos mixtos PMS sobrecargan habitación."
+  },
+  {
+    "id": "POS-010",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Pago mixto",
+    "evidencia": "Desglose presente; acepta diferencia de hasta 0.05 y el cargo PMS usa el total completo."
+  },
+  {
+    "id": "POS-011",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Mesas y cuentas abiertas",
+    "evidencia": "Sin modelos ni flujos de mesas; condicional a necesidades del hotel."
+  },
+  {
+    "id": "POS-012",
+    "prioridad": "Baja",
+    "avance": "0",
+    "requisito": "Dividir y trasladar cuentas",
+    "evidencia": "Ausente; condicional a operación de mesas."
+  },
+  {
+    "id": "CAJ-001",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Apertura de caja",
+    "evidencia": "Pantalla/API y asociación al usuario; backend no valida monto no negativo ni apertura concurrente."
+  },
+  {
+    "id": "CAJ-002",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Bloqueo con caja cerrada",
+    "evidencia": "Se verifica turno abierto; verificación fuera de transacción permite carrera con cierre."
+  },
+  {
+    "id": "CAJ-003",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Movimientos extraordinarios",
+    "evidencia": "Entrada/salida, motivo y auditoría; backend acepta tipos y montos inválidos y no verifica titularidad."
+  },
+  {
+    "id": "CAJ-004",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Cierre por turno",
+    "evidencia": "Calcula resumen; cajero del seed carece de CAJA:EDITAR; cierre concurrente y autor real requieren revisión."
+  },
+  {
+    "id": "CAJ-005",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Arqueo automático",
+    "evidencia": "Calcula y almacena diferencia; validación de montos y redondeos incompleta."
+  },
+  {
+    "id": "CAJ-006",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Proteger cierres",
+    "evidencia": "Rechaza cierre ya cerrado; anular ventas posteriormente altera reportes sin compensar el cierre guardado."
+  },
+  {
+    "id": "CAJ-007",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Desglose del cierre",
+    "evidencia": "Resumen por cinco medios disponible al cerrar y en auditoría; histórico no permite recuperar ese mismo resumen fácilmente."
+  },
+  {
+    "id": "CAJ-008",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Histórico de cajas",
+    "evidencia": "Consulta por caja limitada a 50 registros; falta filtro por fecha y paginación."
+  },
+  {
+    "id": "INV-001",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Administrar bodegas",
+    "evidencia": "Multibodega en esquema y operaciones; solo consulta, sin mantenimiento del catálogo."
+  },
+  {
+    "id": "INV-002",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Existencias",
+    "evidencia": "Consulta por bodega y producto presente; exactitud condicionada a defectos de movimientos y concurrencia."
+  },
+  {
+    "id": "INV-003",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Entradas",
+    "evidencia": "API manual y compras generan Kardex; no existe formulario específico de entrada manual en la interfaz."
+  },
+  {
+    "id": "INV-004",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Salidas con motivo",
+    "evidencia": "API manual con motivo y usuario; no existe formulario específico y validación/concurrencia incompletas."
+  },
+  {
+    "id": "INV-005",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Traslados",
+    "evidencia": "Documento y movimientos en ambas bodegas; backend no valida cantidades positivas ni acumulación de líneas repetidas."
+  },
+  {
+    "id": "INV-006",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Ajustes autorizados",
+    "evidencia": "Formulario y permiso presentes; Math.max recorta saldos sin rechazar exceso y ruta manual admite ajustes con permiso CREAR."
+  },
+  {
+    "id": "INV-007",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Inventario físico",
+    "evidencia": "No hay captura de conteo, comparación ni aplicación de diferencias."
+  },
+  {
+    "id": "INV-008",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Kardex",
+    "evidencia": "Consulta, fecha, documento, signo y saldos; ajustes pueden producir movimientos matemáticamente inconsistentes."
+  },
+  {
+    "id": "INV-009",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Mínimos y alertas",
+    "evidencia": "Campos y alertas presentes; falta configurar mínimos mediante aplicación."
+  },
+  {
+    "id": "INV-010",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Evitar negativos",
+    "evidencia": "Chequeos iniciales insuficientes; líneas repetidas de venta producen stock negativo; ajustes excesivos se recortan."
+  },
+  {
+    "id": "INV-011",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Método de costos",
+    "evidencia": "Costos almacenados en producto/recepción/movimiento; compras no recalculan costo del producto ni hay método formal implementado."
+  },
+  {
+    "id": "INV-012",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Unidades y conversiones",
+    "evidencia": "No hay modelo/campo de unidad ni conversiones; aplicabilidad debe acordarse."
+  },
+  {
+    "id": "REC-001",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Recetas",
+    "evidencia": "No hay entidades, API ni interfaz de recetas."
+  },
+  {
+    "id": "REC-002",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Consumo de ingredientes",
+    "evidencia": "Ventas descuentan el producto final, no ingredientes."
+  },
+  {
+    "id": "REC-003",
+    "prioridad": "Baja",
+    "avance": "0",
+    "requisito": "Subrecetas",
+    "evidencia": "Sin implementación."
+  },
+  {
+    "id": "REC-004",
+    "prioridad": "Baja",
+    "avance": "0",
+    "requisito": "Producción interna",
+    "evidencia": "Sin órdenes de producción ni transformación de insumos."
+  },
+  {
+    "id": "REC-005",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Mermas",
+    "evidencia": "API de movimiento admite MERMA con motivo; falta interfaz y robustez de movimientos."
+  },
+  {
+    "id": "REC-006",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Costo y margen de receta",
+    "evidencia": "Sin recetas ni cálculo específico."
+  },
+  {
+    "id": "COM-001",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Proveedores",
+    "evidencia": "Creación/consulta API; sin mantenimiento completo ni pantalla."
+  },
+  {
+    "id": "COM-002",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Solicitudes de compra",
+    "evidencia": "No hay entidad ni flujo de solicitud interna."
+  },
+  {
+    "id": "COM-003",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Aprobación de compras",
+    "evidencia": "Todas las órdenes nacen APROBADA; no hay transición autorizada ni revisión."
+  },
+  {
+    "id": "COM-004",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Órdenes de compra",
+    "evidencia": "Pantalla/API/detalle/totales presentes; backend no valida cantidades/precios positivos ni consecutivos concurrentes."
+  },
+  {
+    "id": "COM-005",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Recepción parcial y total",
+    "evidencia": "Actualiza stock/Kardex; permite productos ajenos, sobreentregas y detalles negativos sin rechazo explícito."
+  },
+  {
+    "id": "COM-006",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Comparar solicitado y recibido",
+    "evidencia": "Modal muestra solicitado y recibido; no bloquea exceso ni consolida correctamente líneas duplicadas."
+  },
+  {
+    "id": "COM-007",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Factura del proveedor",
+    "evidencia": "Campo almacenado y formulario; puede omitirse, falta garantía de trazabilidad documental exigida."
+  },
+  {
+    "id": "COM-008",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Histórico de compras",
+    "evidencia": "API filtra proveedor/estado; faltan producto/período y filtros de interfaz."
+  },
+  {
+    "id": "COM-009",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Condiciones del proveedor",
+    "evidencia": "Días de crédito en esquema/API; faltan mantenimiento y condiciones de pago completas."
+  },
+  {
+    "id": "CLI-001",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Clientes y empresas",
+    "evidencia": "Creación API, tipos de identificación y selección POS; falta pantalla para registrar clientes."
+  },
+  {
+    "id": "CLI-002",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Identificación y contacto",
+    "evidencia": "Creación y almacenamiento presentes; no permite actualización vía API/interfaz."
+  },
+  {
+    "id": "CLI-003",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Crédito autorizado",
+    "evidencia": "Controlador de ventas no consulta creditoActivo; admite crédito incluso sin cliente."
+  },
+  {
+    "id": "CLI-004",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Límite de crédito",
+    "evidencia": "Campos en catálogo; no calcula deuda ni valida límite al vender."
+  },
+  {
+    "id": "CLI-005",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Abonos y saldos",
+    "evidencia": "No hay cuentas por cobrar, abonos ni saldo pendiente; pago mixto no equivale a crédito con abonos."
+  },
+  {
+    "id": "CLI-006",
+    "prioridad": "Baja",
+    "avance": "0",
+    "requisito": "Estado de cuenta",
+    "evidencia": "Sin vencimientos, antigüedad ni reporte de deuda."
+  },
+  {
+    "id": "PMS-001",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Capa independiente",
+    "evidencia": "Módulo PMS separado, pero ventas crea/confirma cargos directamente; falta adaptador compartido sustituible."
+  },
+  {
+    "id": "PMS-002",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Habitaciones y huéspedes",
+    "evidencia": "Consulta local de ocupadas y huésped hospedado; simulación permitida por PDF."
+  },
+  {
+    "id": "PMS-003",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Validar cargo",
+    "evidencia": "Ventas verifica ocupación, no correspondencia huésped/habitación; endpoint PMS directo no comprueba validez operativa ni monto positivo."
+  },
+  {
+    "id": "PMS-004",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Enviar cargo",
+    "evidencia": "Cargo simulado persistido; pago mixto usa total completo y cargo directo no conserva punto de venta."
+  },
+  {
+    "id": "PMS-005",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Idempotencia",
+    "evidencia": "UUID único y búsqueda previa; carrera simultánea termina en conflicto no tratado y reintento no compara payload."
+  },
+  {
+    "id": "PMS-006",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Estados e intentos",
+    "evidencia": "Cargo y cola registran error; reintento confirma cargo sin actualizar cola ni conservar historial completo de respuestas."
+  },
+  {
+    "id": "PMS-007",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Reintentar",
+    "evidencia": "Actualiza mismo cargo; siempre simula éxito, permite reiterar confirmado y deja cola fallida."
+  },
+  {
+    "id": "PMS-008",
+    "prioridad": "Media",
+    "avance": "25",
+    "requisito": "Conciliación",
+    "evidencia": "Lista cargos/estados y sumas; no calcula diferencias contra pagos POS ni resuelve anulaciones."
+  },
+  {
+    "id": "FAC-001",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Comprobante interno",
+    "evidencia": "Modal consultable/imprimible; impresión no aislada y datos del hotel fijos."
+  },
+  {
+    "id": "FAC-002",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Datos comerciales",
+    "evidencia": "Venta conserva detalle/importes/cliente; comprobante omite cliente y descuento explícito, nombres se leen del catálogo actual."
+  },
+  {
+    "id": "FAC-003",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Interfaz electrónica",
+    "evidencia": "No hay adaptador, contrato o generador de documento electrónico independiente; integración productiva queda fuera del MVP."
+  },
+  {
+    "id": "FAC-004",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Estado electrónico",
+    "evidencia": "No hay modelo/flujo de documento electrónico; condicional a integración."
+  },
+  {
+    "id": "FAC-005",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Reversión autorizada",
+    "evidencia": "Anulación interna vinculada y auditada; no hay nota de crédito ni reversión del cargo PMS."
+  },
+  {
+    "id": "FAC-006",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Regeneración de copia",
+    "evidencia": "Historial reabre mismo comprobante; no duplica venta; faltan formato de impresión y envío."
+  },
+  {
+    "id": "REP-001",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Ventas filtradas",
+    "evidencia": "API filtra fecha/POS/usuario, no producto; interfaz solo fechas; undefined y fecha final afectan resultados."
+  },
+  {
+    "id": "REP-002",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Medios de pago",
+    "evidencia": "Agrupa pagos completados; filtros de fecha defectuosos y anulaciones posteriores al cierre rompen conciliación histórica."
+  },
+  {
+    "id": "REP-003",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Más vendidos",
+    "evidencia": "Sin agrupación/ranking por producto."
+  },
+  {
+    "id": "REP-004",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Existencias por bodega",
+    "evidencia": "Reporte operativo presente; depende de exactitud del stock, no tiene exportación dedicada."
+  },
+  {
+    "id": "REP-005",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Movimientos por producto",
+    "evidencia": "Kardex visible y secuencial por fecha; errores de ajustes afectan consistencia."
+  },
+  {
+    "id": "REP-006",
+    "prioridad": "Media",
+    "avance": "0",
+    "requisito": "Compras por proveedor/período",
+    "evidencia": "No hay reporte de documentos recibidos por período; listado de órdenes no cubre criterio."
+  },
+  {
+    "id": "REP-007",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Diferencias de caja",
+    "evidencia": "Reporte y CSV presentes; responsable refleja usuario de apertura, puede diferir de quien cierra."
+  },
+  {
+    "id": "REP-008",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Indicadores del día",
+    "evidencia": "Ventas/transacciones/ticket/alertas; no hay pruebas de rendimiento ni coherencia de zona horaria en despliegue."
+  },
+  {
+    "id": "REP-009",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Exportación fiel",
+    "evidencia": "CSV desde datos cargados; no escapa comillas ni preserva exactamente todas las columnas visibles; filtros defectuosos."
+  },
+  {
+    "id": "SEG-001",
+    "prioridad": "Alta",
+    "avance": "100",
+    "requisito": "Hash de contraseñas",
+    "evidencia": "bcrypt en seed y comparación en login; valor persistido es hash, aunque credenciales iniciales están publicadas."
+  },
+  {
+    "id": "SEG-002",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Autorización backend",
+    "evidencia": "Middleware existente; PMS sin permiso granular, ajustes alternos y precios permiten eludir restricciones, seed incompleto."
+  },
+  {
+    "id": "SEG-003",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Bitácora",
+    "evidencia": "Registra login exitoso y acciones; faltan logout, fallos de login y cambios administrativos; filtros undefined ocultan registros."
+  },
+  {
+    "id": "SEG-004",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Auditar sensibles",
+    "evidencia": "Anulación/ajuste/precio/cierre presentes; descuento no tiene evento/detalle suficiente y audit falla silenciosamente."
+  },
+  {
+    "id": "SEG-005",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Cierre y expiración de sesión",
+    "evidencia": "Token expira a 8h y logout limpia almacenamiento; no registra logout ni fuerza salida visual inmediata tras 401/403."
+  },
+  {
+    "id": "SEG-006",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Validación de entradas",
+    "evidencia": "Prisma evita concatenación SQL, Zod en login; números/tipos/referencias sin validación suficiente en operaciones."
+  },
+  {
+    "id": "SEG-007",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Secretos externos",
+    "evidencia": ".env ignorado y ejemplo versionado; secreto fallback, contraseñas seed/compose/manual públicas."
+  },
+  {
+    "id": "SEG-008",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Backup y restauración",
+    "evidencia": "Comandos documentados; no hay evidencia de dump restaurado ni prueba real en escenario 9."
+  },
+  {
+    "id": "SEG-009",
+    "prioridad": "Alta",
+    "avance": "100",
+    "requisito": "Integridad referencial",
+    "evidencia": "Prisma define PK/FK/unique y esquema valida; no equivale a verificar toda regla de negocio."
+  },
+  {
+    "id": "SEG-010",
+    "prioridad": "Media",
+    "avance": "50",
+    "requisito": "Errores seguros",
+    "evidencia": "Middleware central registra stack y oculta mensaje 500 en producción; otros mensajes/details pueden filtrar datos internos."
+  },
+  {
+    "id": "RNF-001",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Dos navegadores",
+    "evidencia": "Stack web compatible en principio; sin evidencia reproducible de flujos críticos en dos navegadores."
+  },
+  {
+    "id": "RNF-002",
+    "prioridad": "Alta",
+    "avance": "25",
+    "requisito": "Rendimiento local",
+    "evidencia": "Sin mediciones; consultas sin paginación y cálculos en memoria impiden darlo por demostrado."
+  },
+  {
+    "id": "RNF-003",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Usabilidad escritorio",
+    "evidencia": "Tailwind responsive y pantallas presentes; sin validación visual funcional, modales largos/impresión pendientes."
+  },
+  {
+    "id": "RNF-004",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Claves, índices y restricciones",
+    "evidencia": "34 modelos, PK/FK/unique y Decimal; sin índices adicionales para fecha/FK ni restricciones de saldos/turnos abiertos."
+  },
+  {
+    "id": "RNF-005",
+    "prioridad": "Alta",
+    "avance": "75",
+    "requisito": "Separación de responsabilidades",
+    "evidencia": "Frontend/backend/módulos separados; lógica y Prisma conviven en controladores e integración incrustada en ventas."
+  },
+  {
+    "id": "RNF-006",
+    "prioridad": "Alta",
+    "avance": "100",
+    "requisito": "Git",
+    "evidencia": "Repositorio real con 7 commits; HEAD 36e6381 en auditoría y árbol limpio antes de generar evidencias."
+  },
+  {
+    "id": "RNF-007",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Errores y logs centralizados",
+    "evidencia": "Middleware Express y console; sin correlación/rotación persistente y algunas fallas no llegan al usuario."
+  },
+  {
+    "id": "RNF-008",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Configuración externa",
+    "evidencia": "dotenv y DATABASE_URL; puertos/proxy, JWT expiración, datos hotel y rutas de arranque fijos."
+  },
+  {
+    "id": "RNF-009",
+    "prioridad": "Alta",
+    "avance": "50",
+    "requisito": "Despliegue documentado",
+    "evidencia": "Manual, schema y seed; arranque específico de Windows, sin instalación limpia/restauración demostradas ni configuración productiva de proxy."
+  },
+  {
+    "id": "RNF-010",
+    "prioridad": "Media",
+    "avance": "75",
+    "requisito": "Mantenibilidad",
+    "evidencia": "Módulos y TypeScript compilables; contratos any, controladores extensos y ausencia de capa de integración compartida limitan extensión."
+  }
+]

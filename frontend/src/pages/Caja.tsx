@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { numberFromInput, validNumberInput } from '../utils/number-input';
 import {
   DollarSign,
   ArrowUpRight,
@@ -21,16 +22,16 @@ export const Caja: React.FC = () => {
 
   // Modales
   const [modalApertura, setModalApertura] = useState(false);
-  const [montoApertura, setMontoApertura] = useState<number>(25000);
+  const [montoApertura, setMontoApertura] = useState<number | string>(25000);
   const [notasApertura, setNotasApertura] = useState('');
 
   const [modalMovimiento, setModalMovimiento] = useState(false);
   const [tipoMovimiento, setTipoMovimiento] = useState<'ENTRADA_EXTRAORDINARIA' | 'SALIDA_EXTRAORDINARIA'>('ENTRADA_EXTRAORDINARIA');
-  const [montoMovimiento, setMontoMovimiento] = useState<number>(0);
+  const [montoMovimiento, setMontoMovimiento] = useState<number | string>(0);
   const [motivoMovimiento, setMotivoMovimiento] = useState('');
 
   const [modalCierre, setModalCierre] = useState(false);
-  const [montoContado, setMontoContado] = useState<number>(0);
+  const [montoContado, setMontoContado] = useState<number | string>(0);
   const [notasCierre, setNotasCierre] = useState('');
   const [resumenCierre, setResumenCierre] = useState<any | null>(null);
 
@@ -75,10 +76,10 @@ export const Caja: React.FC = () => {
 
   // Apertura
   const handleAbrirCaja = async () => {
-    if (montoApertura < 0) return;
+    if (!validNumberInput(montoApertura)) { alert('Indique un fondo inicial válido; puede ser cero.'); return; }
     const res = await api.caja.abrirCaja({
       cajaId: cajaSeleccionada,
-      montoInicial: montoApertura,
+      montoInicial: numberFromInput(montoApertura),
       notas: notasApertura,
     });
     if (res.success) {
@@ -91,14 +92,14 @@ export const Caja: React.FC = () => {
 
   // Movimiento Extraordinario
   const handleRegistrarMovimiento = async () => {
-    if (montoMovimiento <= 0 || !motivoMovimiento) {
+    if ((!validNumberInput(montoMovimiento) || numberFromInput(montoMovimiento) <= 0) || !motivoMovimiento) {
       alert('Debe indicar monto y motivo');
       return;
     }
     const res = await api.caja.registrarMovimiento({
       cashShiftId: turnoActivo.id,
       tipo: tipoMovimiento,
-      monto: montoMovimiento,
+      monto: numberFromInput(montoMovimiento),
       motivo: motivoMovimiento,
     });
     if (res.success) {
@@ -113,9 +114,10 @@ export const Caja: React.FC = () => {
 
   // Cierre de Caja
   const handleCerrarCaja = async () => {
+    if (!validNumberInput(montoContado)) { alert('Indique el monto contado; puede ser cero.'); return; }
     const res = await api.caja.cerrarCaja({
       cashShiftId: turnoActivo.id,
-      montoContado,
+      montoContado: numberFromInput(montoContado),
       notas: notasCierre,
     });
     if (res.success) {
@@ -351,7 +353,7 @@ export const Caja: React.FC = () => {
               <input
                 type="number"
                 value={montoApertura}
-                onChange={(e) => setMontoApertura(Number(e.target.value))}
+                onChange={(e) => setMontoApertura(e.target.value)}
                 className="w-full border rounded-lg p-2.5 text-sm font-bold focus:ring-emerald-500 focus:border-emerald-500"
                 min={0}
                 required
@@ -410,7 +412,7 @@ export const Caja: React.FC = () => {
               <input
                 type="number"
                 value={montoMovimiento}
-                onChange={(e) => setMontoMovimiento(Number(e.target.value))}
+                onChange={(e) => setMontoMovimiento(e.target.value)}
                 className="w-full border rounded-lg p-2 text-sm font-bold"
                 min={1}
                 required
@@ -470,7 +472,7 @@ export const Caja: React.FC = () => {
               <input
                 type="number"
                 value={montoContado}
-                onChange={(e) => setMontoContado(Number(e.target.value))}
+                onChange={(e) => setMontoContado(e.target.value)}
                 className="w-full border rounded-lg p-2.5 text-base font-black text-gray-900"
                 required
               />
@@ -478,18 +480,18 @@ export const Caja: React.FC = () => {
                 Diferencia:{' '}
                 <span
                   className={
-                    montoContado - saldoEsperadoEfectivo === 0
+                    numberFromInput(montoContado) - saldoEsperadoEfectivo === 0
                       ? 'text-emerald-600'
-                      : montoContado - saldoEsperadoEfectivo > 0
+                      : numberFromInput(montoContado) - saldoEsperadoEfectivo > 0
                       ? 'text-blue-600'
                       : 'text-red-600'
                   }
                 >
-                  {montoContado - saldoEsperadoEfectivo === 0
+                  {!validNumberInput(montoContado) ? 'Ingrese el monto contado' : numberFromInput(montoContado) - saldoEsperadoEfectivo === 0
                     ? '₡0 (Caja Cuadrada)'
-                    : montoContado - saldoEsperadoEfectivo > 0
-                    ? `+₡${(montoContado - saldoEsperadoEfectivo).toLocaleString()} (Sobrante)`
-                    : `-₡${Math.abs(montoContado - saldoEsperadoEfectivo).toLocaleString()} (Faltante)`}
+                    : numberFromInput(montoContado) - saldoEsperadoEfectivo > 0
+                    ? `+₡${(numberFromInput(montoContado) - saldoEsperadoEfectivo).toLocaleString()} (Sobrante)`
+                    : `-₡${Math.abs(numberFromInput(montoContado) - saldoEsperadoEfectivo).toLocaleString()} (Faltante)`}
                 </span>
               </div>
             </div>

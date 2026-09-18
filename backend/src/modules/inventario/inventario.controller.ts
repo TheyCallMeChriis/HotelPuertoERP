@@ -2,6 +2,10 @@ import { Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { registrarAuditoria } from '../../utils/audit';
+import { changeStock } from '../../utils/stock-change';
+import { nextConsecutive } from '../../utils/transaction-lock';
+import { operationError, parseOperation } from '../../utils/operation-validation';
+import { adjustmentSchema, movementSchema, transferSchema } from './inventory-validation';
 
 // 1. OBTENER EXISTENCIAS (con filtro de bodega y alerta de stock mínimo INV-002, INV-009)
 export const getExistencias = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -61,65 +65,25 @@ export const getKardexByProducto = async (req: AuthenticatedRequest, res: Respon
 
 // 3. MOVIMIENTO MANUAL DE INVENTARIO: ENTRADA O SALIDA CON MOTIVO (INV-003, INV-004, INV-010)
 export const registrarMovimientoManual = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { warehouseId, productId, tipo, cantidad, motivo } = req.body;
-
-  if (!warehouseId || !productId || !tipo || !cantidad || !motivo) {
-    res.status(400).json({ success: false, message: 'Bodega, producto, tipo, cantidad y motivo son obligatorios' });
-    return;
-  }
-
-  const cantNum = Number(cantidad);
-  if (cantNum <= 0) {
-    res.status(400).json({ success: false, message: 'La cantidad debe ser mayor a cero' });
-    return;
+  const { warehouseId, productId, tipo, cantidad, motivo } = parseOperation(movementSchema, req.body);
+  const cantNum = cantidad;
+  if (tipo.startsWith('AJUSTE_') && !req.user?.roles.includes('ADMINISTRADOR')
+    && !req.user?.permisos.includes('INVENTARIO:AJUSTE')) {
+    throw operationError('Se requiere permiso INVENTARIO:AJUSTE para realizar ajustes', 403);
   }
 
   const prod = await prisma.product.findUnique({ where: { id: productId } });
-  if (!prod) {
+  if (!prod?.activo || prod.esServicio) {
     res.status(404).json({ success: false, message: 'Producto no encontrado' });
     return;
   }
 
-  // Obtener stock actual
-  const stockActual = await prisma.stock.findUnique({
-    where: { warehouseId_productId: { warehouseId, productId } },
-  });
-
-  const saldoAnterior = stockActual ? Number(stockActual.cantidad) : 0;
-  let saldoNuevo = saldoAnterior;
-
   const esEntrada = ['ENTRADA_COMPRA', 'AJUSTE_POSITIVO'].includes(tipo);
-  const esSalida = ['SALIDA_VENTA', 'AJUSTE_NEGATIVO', 'MERMA'].includes(tipo);
-
-  if (!esEntrada && !esSalida) {
-    res.status(400).json({ success: false, message: 'Tipo de movimiento no válido' });
-    return;
-  }
-
-  if (esEntrada) {
-    saldoNuevo = saldoAnterior + cantNum;
-  } else {
-    if (saldoAnterior < cantNum) {
-      res.status(400).json({
-        success: false,
-        message: `Existencia insuficiente. Disponible: ${saldoAnterior}, Cantidad a rebajar: ${cantNum}`,
-      });
-      return;
-    }
-    saldoNuevo = saldoAnterior - cantNum;
-  }
 
   // Transacción atómica: actualizar existencia y registrar Kardex
   const mov = await prisma.$transaction(async (tx) => {
-    await tx.stock.upsert({
-      where: { warehouseId_productId: { warehouseId, productId } },
-      update: { cantidad: saldoNuevo },
-      create: {
-        warehouseId,
-        productId,
-        cantidad: saldoNuevo,
-      },
-    });
+    const { saldoAnterior, saldoNuevo } = await changeStock(tx, warehouseId, productId,
+      esEntrada ? cantidad : cantidad.negated());
 
     return await tx.inventoryMovement.create({
       data: {
@@ -143,7 +107,7 @@ export const registrarMovimientoManual = async (req: AuthenticatedRequest, res: 
     accion: 'MOVIMIENTO_INVENTARIO',
     entidad: 'InventoryMovement',
     entidadId: mov.id,
-    detalle: { warehouseId, productId, tipo, cantidad: cantNum, saldoAnterior, saldoNuevo, motivo },
+    detalle: { warehouseId, productId, tipo, cantidad: cantNum, saldoAnterior: mov.saldoAnterior, saldoNuevo: mov.saldoNuevo, motivo },
     ip: req.ip,
   });
 
@@ -156,40 +120,17 @@ export const registrarMovimientoManual = async (req: AuthenticatedRequest, res: 
 
 // 4. TRASLADO ENTRE BODEGAS (INV-005)
 export const realizarTraslado = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { warehouseOrigenId, warehouseDestinoId, items, notas } = req.body;
-
-  if (!warehouseOrigenId || !warehouseDestinoId || !items || !items.length) {
-    res.status(400).json({ success: false, message: 'Bodega origen, bodega destino y al menos un producto son requeridos' });
-    return;
-  }
+  const { warehouseOrigenId, warehouseDestinoId, items, notas } = parseOperation(transferSchema, req.body);
 
   if (warehouseOrigenId === warehouseDestinoId) {
     res.status(400).json({ success: false, message: 'La bodega de origen y destino no pueden ser la misma' });
     return;
   }
 
-  const countTraslados = await prisma.warehouseTransfer.count();
-  const consecutivo = `TRF-${String(countTraslados + 1).padStart(6, '0')}`;
-
-  // Validar disponibilidad de stock en origen
-  for (const it of items) {
-    const stockOrigen = await prisma.stock.findUnique({
-      where: { warehouseId_productId: { warehouseId: warehouseOrigenId, productId: it.productId } },
-    });
-
-    const cant = Number(it.cantidad);
-    const disponible = stockOrigen ? Number(stockOrigen.cantidad) : 0;
-    if (disponible < cant) {
-      res.status(400).json({
-        success: false,
-        message: `Stock insuficiente en bodega origen para el producto ${it.productId}. Disponible: ${disponible}, Solicitado: ${cant}`,
-      });
-      return;
-    }
-  }
 
   // Transacción atómica de traslado
   const traslado = await prisma.$transaction(async (tx) => {
+    const consecutivo = await nextConsecutive(tx, 'TRF');
     const trf = await tx.warehouseTransfer.create({
       data: {
         consecutivo,
@@ -199,7 +140,7 @@ export const realizarTraslado = async (req: AuthenticatedRequest, res: Response)
         estado: 'COMPLETADO',
         notas,
         details: {
-          create: items.map((it: any) => ({
+          create: items.map((it) => ({
             productId: it.productId,
             cantidad: it.cantidad,
           })),
@@ -213,20 +154,13 @@ export const realizarTraslado = async (req: AuthenticatedRequest, res: Response)
     });
 
     for (const it of items) {
-      const cant = Number(it.cantidad);
+      const cant = it.cantidad;
       const prod = await tx.product.findUnique({ where: { id: it.productId } });
+      if (!prod?.activo || prod.esServicio) throw operationError('Producto de inventario no disponible');
 
       // 1. Rebajar en Origen
-      const stockOri = await tx.stock.findUnique({
-        where: { warehouseId_productId: { warehouseId: warehouseOrigenId, productId: it.productId } },
-      });
-      const salOriAnt = stockOri ? Number(stockOri.cantidad) : 0;
-      const salOriNue = salOriAnt - cant;
-
-      await tx.stock.update({
-        where: { warehouseId_productId: { warehouseId: warehouseOrigenId, productId: it.productId } },
-        data: { cantidad: salOriNue },
-      });
+      const { saldoAnterior: salOriAnt, saldoNuevo: salOriNue } =
+        await changeStock(tx, warehouseOrigenId, it.productId, cant.negated());
 
       await tx.inventoryMovement.create({
         data: {
@@ -244,21 +178,8 @@ export const realizarTraslado = async (req: AuthenticatedRequest, res: Response)
       });
 
       // 2. Incrementar en Destino
-      const stockDes = await tx.stock.findUnique({
-        where: { warehouseId_productId: { warehouseId: warehouseDestinoId, productId: it.productId } },
-      });
-      const salDesAnt = stockDes ? Number(stockDes.cantidad) : 0;
-      const salDesNue = salDesAnt + cant;
-
-      await tx.stock.upsert({
-        where: { warehouseId_productId: { warehouseId: warehouseDestinoId, productId: it.productId } },
-        update: { cantidad: salDesNue },
-        create: {
-          warehouseId: warehouseDestinoId,
-          productId: it.productId,
-          cantidad: salDesNue,
-        },
-      });
+      const { saldoAnterior: salDesAnt, saldoNuevo: salDesNue } =
+        await changeStock(tx, warehouseDestinoId, it.productId, cant);
 
       await tx.inventoryMovement.create({
         data: {
@@ -284,7 +205,7 @@ export const realizarTraslado = async (req: AuthenticatedRequest, res: Response)
     accion: 'TRASLADO_BODEGA',
     entidad: 'WarehouseTransfer',
     entidadId: traslado.id,
-    detalle: { consecutivo, warehouseOrigenId, warehouseDestinoId, itemsCount: items.length },
+    detalle: { consecutivo: traslado.consecutivo, warehouseOrigenId, warehouseDestinoId, itemsCount: items.length },
     ip: req.ip,
   });
 
@@ -297,17 +218,11 @@ export const realizarTraslado = async (req: AuthenticatedRequest, res: Response)
 
 // 5. AJUSTE DE INVENTARIO (INV-006)
 export const realizarAjuste = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { warehouseId, tipo, motivo, items } = req.body;
+  const { warehouseId, tipo, motivo, items } = parseOperation(adjustmentSchema, req.body);
 
-  if (!warehouseId || !tipo || !motivo || !items || !items.length) {
-    res.status(400).json({ success: false, message: 'Bodega, tipo (POSITIVO/NEGATIVO), motivo e items son requeridos' });
-    return;
-  }
-
-  const countAjustes = await prisma.inventoryAdjustment.count();
-  const consecutivo = `AJU-${String(countAjustes + 1).padStart(6, '0')}`;
 
   const ajuste = await prisma.$transaction(async (tx) => {
+    const consecutivo = await nextConsecutive(tx, 'AJU');
     const aju = await tx.inventoryAdjustment.create({
       data: {
         consecutivo,
@@ -316,7 +231,7 @@ export const realizarAjuste = async (req: AuthenticatedRequest, res: Response): 
         motivo,
         usuarioId: req.user!.id,
         details: {
-          create: items.map((it: any) => ({
+          create: items.map((it) => ({
             productId: it.productId,
             cantidad: it.cantidad,
             costoUnitario: it.costoUnitario || 0,
@@ -327,23 +242,11 @@ export const realizarAjuste = async (req: AuthenticatedRequest, res: Response): 
     });
 
     for (const it of items) {
-      const cant = Number(it.cantidad);
-      const stockAct = await tx.stock.findUnique({
-        where: { warehouseId_productId: { warehouseId, productId: it.productId } },
-      });
-
-      const salAnt = stockAct ? Number(stockAct.cantidad) : 0;
-      const salNue = tipo === 'POSITIVO' ? salAnt + cant : Math.max(0, salAnt - cant);
-
-      await tx.stock.upsert({
-        where: { warehouseId_productId: { warehouseId, productId: it.productId } },
-        update: { cantidad: salNue },
-        create: {
-          warehouseId,
-          productId: it.productId,
-          cantidad: salNue,
-        },
-      });
+      const cant = it.cantidad;
+      const prod = await tx.product.findUnique({ where: { id: it.productId } });
+      if (!prod?.activo || prod.esServicio) throw operationError('Producto de inventario no disponible');
+      const { saldoAnterior: salAnt, saldoNuevo: salNue } = await changeStock(tx, warehouseId,
+        it.productId, tipo === 'POSITIVO' ? cant : cant.negated());
 
       await tx.inventoryMovement.create({
         data: {
@@ -369,7 +272,7 @@ export const realizarAjuste = async (req: AuthenticatedRequest, res: Response): 
     accion: 'AJUSTE_INVENTARIO',
     entidad: 'InventoryAdjustment',
     entidadId: ajuste.id,
-    detalle: { consecutivo, warehouseId, tipo, motivo },
+    detalle: { consecutivo: ajuste.consecutivo, warehouseId, tipo, motivo },
     ip: req.ip,
   });
 

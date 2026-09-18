@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { registrarAuditoria } from '../../utils/audit';
+import { parseCustomer } from './customer-validation';
 
 // ================= PRODUCTOS =================
 export const getProductos = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -154,7 +155,7 @@ export const getClientes = async (req: AuthenticatedRequest, res: Response): Pro
 };
 
 export const createCliente = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { tipoIdentificacion, identificacion, nombre, email, telefono, direccion, limiteCredito, diasCredito, creditoActivo } = req.body;
+  const { tipoIdentificacion, identificacion, nombre, email, telefono, direccion, limiteCredito, diasCredito, creditoActivo } = parseCustomer(req.body, req.user!);
 
   if (!identificacion || !nombre) {
     res.status(400).json({ success: false, message: 'Identificación y nombre son obligatorios' });
@@ -177,7 +178,7 @@ export const createCliente = async (req: AuthenticatedRequest, res: Response): P
       direccion,
       limiteCredito: limiteCredito || 0,
       diasCredito: diasCredito || 0,
-      creditoActivo: Boolean(creditoActivo),
+      creditoActivo,
     },
   });
 

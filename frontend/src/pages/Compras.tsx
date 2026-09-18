@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { numberFromInput, validNumberInput } from '../utils/number-input';
 import { Truck, Plus, PackageCheck, FileText, CheckCircle2 } from 'lucide-react';
 
 export const Compras: React.FC = () => {
@@ -12,7 +13,7 @@ export const Compras: React.FC = () => {
   const [modalNuevaOrden, setModalNuevaOrden] = useState(false);
   const [proveedorId, setProveedorId] = useState('');
   const [bodegaId, setBodegaId] = useState('');
-  const [itemsOrden, setItemsOrden] = useState<Array<{ productId: string; cantidadSolicitada: number; precioUnitario: number }>>([
+  const [itemsOrden, setItemsOrden] = useState<Array<{ productId: string; cantidadSolicitada: number | string; precioUnitario: number | string }>>([
     { productId: '', cantidadSolicitada: 10, precioUnitario: 500 },
   ]);
 
@@ -20,7 +21,7 @@ export const Compras: React.FC = () => {
   const [modalRecepcion, setModalRecepcion] = useState(false);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<any | null>(null);
   const [facturaProveedor, setFacturaProveedor] = useState('');
-  const [itemsRecepcion, setItemsRecepcion] = useState<Array<{ productId: string; cantidadRecibida: number; costoUnitario: number }>>([]);
+  const [itemsRecepcion, setItemsRecepcion] = useState<Array<{ productId: string; cantidadRecibida: number | string; costoUnitario: number }>>([]);
 
   const cargarDatos = async () => {
     const [resOrd, resProv, resBod, resProd] = await Promise.all([
@@ -45,7 +46,7 @@ export const Compras: React.FC = () => {
 
   // Crear Orden de Compra
   const handleCrearOrden = async () => {
-    if (!proveedorId || !bodegaId || itemsOrden.some((it) => !it.productId || it.cantidadSolicitada <= 0)) {
+    if (!proveedorId || !bodegaId || itemsOrden.some((it) => !it.productId || !validNumberInput(it.cantidadSolicitada) || numberFromInput(it.cantidadSolicitada) <= 0 || !validNumberInput(it.precioUnitario))) {
       alert('Complete proveedor, bodega y productos con cantidades válidas');
       return;
     }
@@ -53,7 +54,7 @@ export const Compras: React.FC = () => {
     const res = await api.compras.createOrden({
       supplierId: proveedorId,
       warehouseId: bodegaId,
-      items: itemsOrden,
+      items: itemsOrden.map(it => ({ ...it, cantidadSolicitada: numberFromInput(it.cantidadSolicitada), precioUnitario: numberFromInput(it.precioUnitario) })),
     });
 
     if (res.success) {
@@ -85,12 +86,21 @@ export const Compras: React.FC = () => {
   // Confirmar Recepción
   const handleConfirmarRecepcion = async () => {
     if (!ordenSeleccionada) return;
+    if (itemsRecepcion.some(it => !validNumberInput(it.cantidadRecibida))) {
+      alert('Indique cantidades válidas; use cero para productos que no recibe hoy');
+      return;
+    }
+    const recibidos = itemsRecepcion.filter(it => numberFromInput(it.cantidadRecibida) > 0);
+    if (!recibidos.length) {
+      alert('Indique al menos un producto recibido');
+      return;
+    }
     const res = await api.compras.registrarRecepcion({
       purchaseOrderId: ordenSeleccionada.id,
       facturaProveedor,
-      items: itemsRecepcion.map((it) => ({
+      items: recibidos.map((it) => ({
         productId: it.productId,
-        cantidadRecibida: it.cantidadRecibida,
+        cantidadRecibida: numberFromInput(it.cantidadRecibida),
         costoUnitario: it.costoUnitario,
       })),
     });
@@ -170,7 +180,7 @@ export const Compras: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-3 text-center">
-                    {ord.estado !== 'RECIBIDA_TOTAL' && (
+                    {['APROBADA', 'RECIBIDA_PARCIAL'].includes(ord.estado) && (
                       <button
                         onClick={() => abrirRecepcion(ord)}
                         className="text-xs text-emerald-700 font-bold hover:underline flex items-center space-x-1 mx-auto"
@@ -255,24 +265,26 @@ export const Compras: React.FC = () => {
                     value={it.cantidadSolicitada}
                     onChange={(e) => {
                       const newItems = [...itemsOrden];
-                      newItems[idx].cantidadSolicitada = Number(e.target.value);
+                      newItems[idx].cantidadSolicitada = e.target.value;
                       setItemsOrden(newItems);
                     }}
                     placeholder="Cant."
                     className="col-span-3 border rounded p-1.5 text-xs"
-                    min={1}
+                    min={0.001}
+                    step={0.001}
                   />
                   <input
                     type="number"
                     value={it.precioUnitario}
                     onChange={(e) => {
                       const newItems = [...itemsOrden];
-                      newItems[idx].precioUnitario = Number(e.target.value);
+                      newItems[idx].precioUnitario = e.target.value;
                       setItemsOrden(newItems);
                     }}
                     placeholder="Costo"
                     className="col-span-3 border rounded p-1.5 text-xs"
                     min={0}
+                    step={0.01}
                   />
                 </div>
               ))}
@@ -346,11 +358,13 @@ export const Compras: React.FC = () => {
                       value={it.cantidadRecibida}
                       onChange={(e) => {
                         const copy = [...itemsRecepcion];
-                        copy[idx].cantidadRecibida = Number(e.target.value);
+                        copy[idx].cantidadRecibida = e.target.value;
                         setItemsRecepcion(copy);
                       }}
                       className="w-24 border rounded p-1 text-xs font-bold text-emerald-700"
                       min={0}
+                      max={Math.max(0, it.cantidadSolicitada - it.cantidadYaRecibida)}
+                      step={0.001}
                     />
                   </div>
                 </div>

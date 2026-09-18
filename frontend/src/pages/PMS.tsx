@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { numberFromInput, validNumberInput } from '../utils/number-input';
 import { Hotel, Send, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileText } from 'lucide-react';
 
 export const PMS: React.FC = () => {
@@ -9,7 +10,7 @@ export const PMS: React.FC = () => {
 
   // Simulador de envío
   const [habitacionId, setHabitacionId] = useState('');
-  const [montoCargo, setMontoCargo] = useState(15000);
+  const [montoCargo, setMontoCargo] = useState<number | string>(15000);
   const [simularError, setSimularError] = useState(false);
   const [resultadoSimulacion, setResultadoSimulacion] = useState<any | null>(null);
 
@@ -36,6 +37,7 @@ export const PMS: React.FC = () => {
 
   // Enviar cargo simulado
   const handleEnviarCargo = async () => {
+    if (!validNumberInput(montoCargo) || numberFromInput(montoCargo) <= 0) { alert('Indique un importe positivo para el cargo'); return; }
     const hab = habitaciones.find((h) => h.id === habitacionId);
     if (!hab || !hab.huesped) {
       alert('Seleccione una habitación ocupada con un huésped activo');
@@ -45,7 +47,7 @@ export const PMS: React.FC = () => {
     const res = await api.pms.enviarCargo({
       roomId: hab.id,
       guestId: hab.huesped.id,
-      monto: montoCargo,
+      monto: numberFromInput(montoCargo),
       simularError,
     });
 
@@ -103,7 +105,7 @@ export const PMS: React.FC = () => {
             <input
               type="number"
               value={montoCargo}
-              onChange={(e) => setMontoCargo(Number(e.target.value))}
+              onChange={(e) => setMontoCargo(e.target.value)}
               className="w-full border rounded-lg p-2 text-sm font-bold text-gray-900"
               min={100}
             />

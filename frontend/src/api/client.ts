@@ -1,5 +1,15 @@
 const API_BASE = '/api';
 
+function queryString(params?: Record<string, unknown>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value === undefined || value === null || value === '') continue;
+    query.set(key, String(value));
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
 export function getAuthToken(): string | null {
   return localStorage.getItem('pos_token');
 }
@@ -62,8 +72,7 @@ export const api = {
   // Catálogos
   catalogos: {
     getProductos: (params?: { busqueda?: string; categoriaId?: string }) => {
-      const q = new URLSearchParams(params as any).toString();
-      return apiRequest(`/catalogos/productos?${q}`);
+      return apiRequest(`/catalogos/productos${queryString(params)}`);
     },
     getCategorias: () => apiRequest('/catalogos/categorias'),
     getClientes: (busqueda?: string) =>
@@ -95,8 +104,7 @@ export const api = {
     createVenta: (body: any) =>
       apiRequest('/ventas', { method: 'POST', body: JSON.stringify(body) }),
     getVentas: (params?: any) => {
-      const q = new URLSearchParams(params).toString();
-      return apiRequest(`/ventas?${q}`);
+      return apiRequest(`/ventas${queryString(params)}`);
     },
     getVentaById: (id: string) => apiRequest(`/ventas/${id}`),
     anularVenta: (id: string, motivo: string) =>
@@ -106,8 +114,7 @@ export const api = {
   // Inventarios y Kardex
   inventario: {
     getExistencias: (params?: { warehouseId?: string; soloBajoMinimo?: boolean }) => {
-      const q = new URLSearchParams(params as any).toString();
-      return apiRequest(`/inventario/existencias?${q}`);
+      return apiRequest(`/inventario/existencias${queryString(params)}`);
     },
     getKardex: (productId: string, warehouseId?: string) =>
       apiRequest(`/inventario/kardex/${productId}${warehouseId ? `?warehouseId=${warehouseId}` : ''}`),
@@ -124,8 +131,7 @@ export const api = {
     createOrden: (body: any) =>
       apiRequest('/compras/ordenes', { method: 'POST', body: JSON.stringify(body) }),
     getOrdenes: (params?: any) => {
-      const q = new URLSearchParams(params).toString();
-      return apiRequest(`/compras/ordenes?${q}`);
+      return apiRequest(`/compras/ordenes${queryString(params)}`);
     },
     registrarRecepcion: (body: any) =>
       apiRequest('/compras/recepciones', { method: 'POST', body: JSON.stringify(body) }),
@@ -145,12 +151,10 @@ export const api = {
   reportes: {
     getDashboardKPIs: () => apiRequest('/reportes/dashboard'),
     getVentas: (params?: any) => {
-      const q = new URLSearchParams(params).toString();
-      return apiRequest(`/reportes/ventas?${q}`);
+      return apiRequest(`/reportes/ventas${queryString(params)}`);
     },
     getFormasPago: (params?: any) => {
-      const q = new URLSearchParams(params).toString();
-      return apiRequest(`/reportes/formas-pago?${q}`);
+      return apiRequest(`/reportes/formas-pago${queryString(params)}`);
     },
     getDiferenciasCaja: () => apiRequest('/reportes/caja-diferencias'),
   },

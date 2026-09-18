@@ -1,9 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { ensureDefaultPermissions } from '../src/utils/default-permissions';
+import dotenv from 'dotenv';
+import path from 'path';
+import { seedPasswords } from '../src/config/validate-env';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const passwords = seedPasswords(process.env);
   console.log('--- INICIANDO SEMBRADO DE DATOS (SEED) ---');
 
   // 1. FORMAS DE PAGO OBLIGATORIAS
@@ -52,7 +59,7 @@ async function main() {
 
   for (const mod of modulos) {
     for (const acc of acciones) {
-      const permiso = await prisma.permission.upsert({
+      await prisma.permission.upsert({
         where: { modulo_accion: { modulo: mod, accion: acc } },
         update: {},
         create: {
@@ -62,47 +69,15 @@ async function main() {
         },
       });
 
-      // Asignar al rol ADMINISTRADOR todos los permisos
-      const adminRoleId = rolesMap.get('ADMINISTRADOR');
-      if (adminRoleId) {
-        await prisma.rolePermission.upsert({
-          where: { roleId_permissionId: { roleId: adminRoleId, permissionId: permiso.id } },
-          update: {},
-          create: { roleId: adminRoleId, permissionId: permiso.id },
-        });
-      }
-
-      // Asignar permisos típicos a CAJERO
-      if (['VENTAS', 'CAJA', 'CLIENTES'].includes(mod) && ['VER', 'CREAR'].includes(acc)) {
-        const cajeroRoleId = rolesMap.get('CAJERO');
-        if (cajeroRoleId) {
-          await prisma.rolePermission.upsert({
-            where: { roleId_permissionId: { roleId: cajeroRoleId, permissionId: permiso.id } },
-            update: {},
-            create: { roleId: cajeroRoleId, permissionId: permiso.id },
-          });
-        }
-      }
-
-      // Asignar permisos a BODEGA
-      if (mod === 'INVENTARIO' && ['VER', 'CREAR', 'AJUSTE'].includes(acc)) {
-        const bodegaRoleId = rolesMap.get('BODEGA');
-        if (bodegaRoleId) {
-          await prisma.rolePermission.upsert({
-            where: { roleId_permissionId: { roleId: bodegaRoleId, permissionId: permiso.id } },
-            update: {},
-            create: { roleId: bodegaRoleId, permissionId: permiso.id },
-          });
-        }
-      }
     }
   }
+  await ensureDefaultPermissions(prisma);
   console.log('✅ Permisos y matriz RBAC sembrados');
 
   // 4. USUARIOS INICIALES (con contraseñas hash seguras)
   const passwordSalt = await bcrypt.genSalt(10);
-  const defaultAdminPass = await bcrypt.hash('AdminPassword2026!', passwordSalt);
-  const defaultOperPass = await bcrypt.hash('Hotel2026!', passwordSalt);
+  const defaultAdminPass = await bcrypt.hash(passwords.admin, passwordSalt);
+  const defaultOperPass = await bcrypt.hash(passwords.operator, passwordSalt);
 
   const usuariosData = [
     { username: 'admin', nombre: 'Administrador General', email: 'admin@hotelpuertolimon.com', pass: defaultAdminPass, rol: 'ADMINISTRADOR' },

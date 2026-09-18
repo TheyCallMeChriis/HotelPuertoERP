@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { numberFromInput, validNumberInput } from '../utils/number-input';
 import {
   Package,
   ArrowRightLeft,
@@ -25,14 +26,14 @@ export const Inventario: React.FC = () => {
   const [modalTraslado, setModalTraslado] = useState(false);
   const [trasladoDestino, setTrasladoDestino] = useState('');
   const [trasladoProducto, setTrasladoProducto] = useState('');
-  const [trasladoCantidad, setTrasladoCantidad] = useState(1);
+  const [trasladoCantidad, setTrasladoCantidad] = useState<number | string>(1);
   const [trasladoNotas, setTrasladoNotas] = useState('');
 
   // Modal Ajuste
   const [modalAjuste, setModalAjuste] = useState(false);
   const [ajusteTipo, setAjusteTipo] = useState<'POSITIVO' | 'NEGATIVO'>('POSITIVO');
   const [ajusteProducto, setAjusteProducto] = useState('');
-  const [ajusteCantidad, setAjusteCantidad] = useState(1);
+  const [ajusteCantidad, setAjusteCantidad] = useState<number | string>(1);
   const [ajusteMotivo, setAjusteMotivo] = useState('');
 
   const cargarBodegas = async () => {
@@ -78,14 +79,14 @@ export const Inventario: React.FC = () => {
 
   // Realizar Traslado
   const handleTraslado = async () => {
-    if (!trasladoDestino || !trasladoProducto || trasladoCantidad <= 0) {
+    if (!trasladoDestino || !trasladoProducto || (!validNumberInput(trasladoCantidad) || numberFromInput(trasladoCantidad) <= 0)) {
       alert('Complete todos los campos del traslado');
       return;
     }
     const res = await api.inventario.realizarTraslado({
       warehouseOrigenId: bodegaActual,
       warehouseDestinoId: trasladoDestino,
-      items: [{ productId: trasladoProducto, cantidad: trasladoCantidad }],
+      items: [{ productId: trasladoProducto, cantidad: numberFromInput(trasladoCantidad) }],
       notas: trasladoNotas,
     });
     if (res.success) {
@@ -99,7 +100,7 @@ export const Inventario: React.FC = () => {
 
   // Realizar Ajuste
   const handleAjuste = async () => {
-    if (!ajusteProducto || ajusteCantidad <= 0 || !ajusteMotivo) {
+    if (!ajusteProducto || (!validNumberInput(ajusteCantidad) || numberFromInput(ajusteCantidad) <= 0) || !ajusteMotivo) {
       alert('Producto, cantidad y motivo obligatorio son requeridos');
       return;
     }
@@ -107,7 +108,7 @@ export const Inventario: React.FC = () => {
       warehouseId: bodegaActual,
       tipo: ajusteTipo,
       motivo: ajusteMotivo,
-      items: [{ productId: ajusteProducto, cantidad: ajusteCantidad }],
+      items: [{ productId: ajusteProducto, cantidad: numberFromInput(ajusteCantidad) }],
     });
     if (res.success) {
       alert('Ajuste de inventario aplicado exitosamente');
@@ -358,7 +359,7 @@ export const Inventario: React.FC = () => {
               <input
                 type="number"
                 value={trasladoCantidad}
-                onChange={(e) => setTrasladoCantidad(Number(e.target.value))}
+                onChange={(e) => setTrasladoCantidad(e.target.value)}
                 className="w-full border rounded-lg p-2 text-xs"
                 min={1}
               />
@@ -424,7 +425,7 @@ export const Inventario: React.FC = () => {
               <input
                 type="number"
                 value={ajusteCantidad}
-                onChange={(e) => setAjusteCantidad(Number(e.target.value))}
+                onChange={(e) => setAjusteCantidad(e.target.value)}
                 className="w-full border rounded-lg p-2 text-xs"
                 min={1}
               />

@@ -74,7 +74,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   const token = jwt.sign(
     { id: user.id, username: user.username },
     ENV.JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: ENV.JWT_EXPIRES_IN }
   );
 
   // Registrar auditoría de inicio de sesión (SEG-003)
