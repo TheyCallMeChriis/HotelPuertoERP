@@ -25,8 +25,8 @@ test('consultas sin filtros no envían undefined, null, vacío ni un ? suelto', 
   await api.ventas.getVentas({ fechaInicio: null, fechaFin: undefined });
   await api.inventario.getExistencias();
   await api.compras.getOrdenes({ supplierId: undefined });
-  await api.reportes.getVentas({ fechaInicio: undefined, fechaFin: undefined });
-  await api.reportes.getFormasPago({ fechaInicio: '', fechaFin: null });
+  await api.reportes.get('ventas', { fechaInicio: undefined, fechaFin: undefined });
+  await api.reportes.get('formas-pago', { fechaInicio: '', fechaFin: null });
   assert.deepEqual(urls, ['/api/catalogos/productos', '/api/ventas', '/api/inventario/existencias', '/api/compras/ordenes', '/api/reportes/ventas', '/api/reportes/formas-pago']);
 });
 
@@ -38,7 +38,7 @@ test('filtros conservan false, cero, fechas, tildes y caracteres especiales', as
   });
   await api.inventario.getExistencias({ warehouseId: 'bodega & bar', soloBajoMinimo: false });
   await api.catalogos.getProductos({ busqueda: 'café + té', categoriaId: undefined });
-  await api.reportes.getVentas({ fechaInicio: '2026-09-01', fechaFin: '2026-09-17', offset: 0 });
+  await api.reportes.get('ventas', { fechaInicio: '2026-09-01', fechaFin: '2026-09-17', offset: 0 });
   assert.equal(new URL(urls[0], 'http://test').searchParams.get('soloBajoMinimo'), 'false');
   assert.equal(new URL(urls[0], 'http://test').searchParams.get('warehouseId'), 'bodega & bar');
   assert.equal(new URL(urls[1], 'http://test').searchParams.get('busqueda'), 'café + té');
@@ -51,7 +51,7 @@ test('filtros conservan false, cero, fechas, tildes y caracteres especiales', as
 const { ensureDefaultPermissions } = load('backend/src/utils/default-permissions.ts');
 function database() {
   const roles = ['ADMINISTRADOR', 'CAJERO', 'RESTAURANTE_BAR', 'BODEGA', 'PROVEEDURIA', 'CONTABILIDAD', 'AUDITOR', 'PERSONALIZADO'].map(nombre => ({ id: nombre, nombre }));
-  const modules = ['VENTAS', 'CAJA', 'INVENTARIO', 'COMPRAS', 'CLIENTES', 'PROVEEDORES', 'REPORTES', 'SEGURIDAD', 'HOTEL_PMS'];
+  const modules = ['VENTAS', 'CAJA', 'INVENTARIO', 'COMPRAS', 'CLIENTES', 'PROVEEDORES', 'REPORTES', 'SEGURIDAD', 'HOTEL_PMS', 'CATALOGOS'];
   const permissions = modules.flatMap(modulo => ['VER', 'CREAR', 'EDITAR', 'ANULAR', 'DESCUENTO', 'AJUSTE'].map(accion => ({ id: `${modulo}:${accion}`, modulo, accion })));
   const assignments = new Set(['PERSONALIZADO:VENTAS:VER', 'CAJERO:REPORTES:VER']);
   const tx = {

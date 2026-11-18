@@ -1,35 +1,104 @@
-import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { Hotel, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
+// Login screen. On a fresh installation (or with SETUP_TOKEN) it first offers the initial
+// administrator registration.
 
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
+import { Hotel, Lock, User, AlertCircle, ArrowRight, UserPlus, Mail, KeyRound, BadgeCheck } from 'lucide-react';
+
+// Same minimum as the backend (PASSWORD_MIN)
+const PASSWORD_MIN = 12;
+const inputClass =
+  'block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm';
+
+// Text input with a leading icon
+const IconInput: React.FC<{
+  label: string;
+  icon: React.ElementType;
+  type?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  hint?: string;
+}> = ({ label, icon: Icon, type = 'text', value, onChange, placeholder, autoComplete, hint }) => (
+  <div>
+    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">{label}</label>
+    <div className="relative">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+        <Icon className="w-5 h-5" />
+      </div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={inputClass}
+        required
+      />
+    </div>
+    {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+  </div>
+);
+
+// Login and initial administrator registration
 export const Login: React.FC = () => {
-  const { login } = useAuth();
+  const { login, startSession } = useAuth();
+  const [modo, setModo] = useState<'cargando' | 'login' | 'registro'>('cargando');
+  const [registroDisponible, setRegistroDisponible] = useState(false);
+  const [requiereCodigo, setRequiereCodigo] = useState(false);
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [email, setEmail] = useState('');
+  const [confirmar, setConfirmar] = useState('');
+  const [codigo, setCodigo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // On first load: if administrator registration is enabled, it is shown first
+  useEffect(() => {
+    api.auth.getSetup().then((res) => {
+      const disponible = Boolean(res.success && res.data?.disponible);
+      setRegistroDisponible(disponible);
+      setRequiereCodigo(Boolean(res.data?.requiereCodigo));
+      setModo(disponible ? 'registro' : 'login');
+    });
+  }, []);
+
+  const cambiarModo = (m: 'login' | 'registro') => {
+    setModo(m);
+    setError(null);
+    setPassword('');
+    setConfirmar('');
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
       setError('Por favor complete todos los campos');
       return;
     }
-
     setLoading(true);
     setError(null);
     const res = await login(username, password);
     setLoading(false);
-
-    if (!res.success) {
-      setError(res.message || 'Error al iniciar sesión');
-    }
+    if (!res.success) setError(res.message || 'Error al iniciar sesión');
   };
 
-  const setDemoUser = (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
+  const handleRegistro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < PASSWORD_MIN) return setError(`La contraseña debe tener al menos ${PASSWORD_MIN} caracteres`);
+    if (password !== confirmar) return setError('Las contraseñas no coinciden');
+    if (requiereCodigo && !codigo.trim()) return setError('Ingrese el código de instalación definido en backend/.env');
+    setLoading(true);
     setError(null);
+    const res = await api.auth.setup({ username, nombre, email, password, codigo: requiereCodigo ? codigo : undefined });
+    setLoading(false);
+    if (!res.success || !res.data) return setError(res.message || 'No se pudo registrar el administrador');
+    startSession(res.data.token, res.data.user);
   };
 
   return (
@@ -39,117 +108,72 @@ export const Login: React.FC = () => {
           <Hotel className="w-10 h-10 text-white" />
         </div>
         <h2 className="text-3xl font-extrabold text-white tracking-tight">Hotel Puerto Limón</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          Sistema Modular POS-ERP para Operación Hotelera
-        </p>
+        <p className="mt-2 text-sm text-slate-400">Sistema Modular POS-ERP para Operación Hotelera</p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-white py-8 px-6 shadow-2xl rounded-2xl sm:px-10 border border-slate-100">
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            {error && (
-              <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm flex items-center space-x-2 rounded">
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
+          {modo === 'cargando' && <p className="text-center text-sm text-gray-400">Cargando...</p>}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                Usuario
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                  <User className="w-5 h-5" />
+          {error && modo !== 'cargando' && (
+            <div className="mb-5 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm flex items-center space-x-2 rounded">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {modo === 'registro' && (
+            <form className="space-y-4" onSubmit={handleRegistro}>
+              <div className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                <UserPlus className="w-5 h-5 text-emerald-700 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-emerald-900">Registrar administrador</p>
+                  <p className="text-xs text-emerald-800">
+                    {requiereCodigo
+                      ? 'Registro habilitado con código de instalación. Al terminar, borre SETUP_TOKEN de backend/.env.'
+                      : 'No hay administradores activos. Cree la cuenta que configurará el sistema.'}
+                  </p>
                 </div>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="ej. admin o cajero1"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
-                  required
-                />
               </div>
-            </div>
+              {requiereCodigo && (
+                <IconInput label="Código de instalación" icon={BadgeCheck} type="password" value={codigo} onChange={setCodigo}
+                  autoComplete="off" hint="Valor de SETUP_TOKEN en backend/.env" />
+              )}
+              <IconInput label="Nombre completo" icon={User} value={nombre} onChange={setNombre} placeholder="ej. Christopher León" />
+              <IconInput label="Usuario" icon={User} value={username} onChange={setUsername} placeholder="ej. chris.admin" autoComplete="username"
+                hint="Minúsculas, números, punto o guion" />
+              <IconInput label="Correo" icon={Mail} type="email" value={email} onChange={setEmail} autoComplete="email" />
+              <IconInput label="Contraseña" icon={Lock} type="password" value={password} onChange={setPassword} autoComplete="new-password"
+                hint={`Mínimo ${PASSWORD_MIN} caracteres`} />
+              <IconInput label="Confirmar contraseña" icon={KeyRound} type="password" value={confirmar} onChange={setConfirmar} autoComplete="new-password" />
+              <button type="submit" disabled={loading}
+                className="w-full flex justify-center items-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                {loading ? 'Registrando...' : 'Crear administrador e ingresar'}
+              </button>
+              {requiereCodigo && (
+                <button type="button" onClick={() => cambiarModo('login')} className="w-full text-xs text-gray-500 hover:text-emerald-700">
+                  Ya tengo una cuenta: iniciar sesión
+                </button>
+              )}
+            </form>
+          )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                Contraseña
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Iniciando sesión...' : 'Ingresar al Sistema'}
-              {!loading && <ArrowRight className="ml-2 w-4 h-4" />}
-            </button>
-          </form>
-
-          {/* Accesos rápidos para demostración y evaluación */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 text-center">
-              Acceso Rápido por Perfil (Demostración)
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => setDemoUser('admin', 'AdminPassword2026!')}
-                className="p-2 border border-gray-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-left transition"
-              >
-                <span className="font-bold text-gray-800 block">👑 Administrador</span>
-                <span className="text-gray-500 text-[11px]">Acceso total</span>
+          {modo === 'login' && (
+            <form className="space-y-5" onSubmit={handleLogin}>
+              <IconInput label="Usuario" icon={User} value={username} onChange={setUsername} placeholder="ej. admin o cajero1" autoComplete="username" />
+              <IconInput label="Contraseña" icon={Lock} type="password" value={password} onChange={setPassword} placeholder="••••••••" autoComplete="current-password" />
+              <button type="submit" disabled={loading}
+                className="w-full flex justify-center items-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                {loading ? 'Iniciando sesión...' : 'Ingresar al Sistema'}
+                {!loading && <ArrowRight className="ml-2 w-4 h-4" />}
               </button>
-              <button
-                type="button"
-                onClick={() => setDemoUser('cajero1', 'Hotel2026!')}
-                className="p-2 border border-gray-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-left transition"
-              >
-                <span className="font-bold text-gray-800 block">💳 Cajero / POS</span>
-                <span className="text-gray-500 text-[11px]">Ventas y caja</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDemoUser('mesero1', 'Hotel2026!')}
-                className="p-2 border border-gray-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-left transition"
-              >
-                <span className="font-bold text-gray-800 block">🍹 Restaurante/Bar</span>
-                <span className="text-gray-500 text-[11px]">Comandas y cargos</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDemoUser('bodeguero1', 'Hotel2026!')}
-                className="p-2 border border-gray-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-left transition"
-              >
-                <span className="font-bold text-gray-800 block">📦 Bodeguero</span>
-                <span className="text-gray-500 text-[11px]">Kardex y traslados</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDemoUser('auditor1', 'Hotel2026!')}
-                className="p-2 border border-gray-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-left col-span-2 transition"
-              >
-                <span className="font-bold text-gray-800 block">🛡️ Auditor / TI</span>
-                <span className="text-gray-500 text-[11px]">Bitácora y supervisión técnica</span>
-              </button>
-            </div>
-          </div>
+              {registroDisponible && (
+                <button type="button" onClick={() => cambiarModo('registro')} className="w-full text-xs text-gray-500 hover:text-emerald-700">
+                  Registrar un administrador
+                </button>
+              )}
+            </form>
+          )}
         </div>
       </div>
     </div>

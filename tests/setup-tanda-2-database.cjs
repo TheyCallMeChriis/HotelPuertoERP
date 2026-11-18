@@ -1,4 +1,4 @@
-// Crea exclusivamente la base temporal en el puerto reservado para estas pruebas.
+// Creates only the temporary database on the port reserved for these tests.
 const { PrismaClient } = require('../backend/node_modules/@prisma/client');
 const prisma = new PrismaClient({ datasources: { db: { url: 'postgresql://codex_test@127.0.0.1:55439/postgres' } } });
 (async () => {

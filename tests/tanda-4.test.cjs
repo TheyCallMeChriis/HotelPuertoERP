@@ -24,7 +24,7 @@ test('seed exige contraseñas explícitas y diferentes antes de escribir datos',
 });
 test('crear clientes valida condiciones de crédito y exige autorización independiente', () => {
   const user = { roles: ['CAJERO'], permisos: ['CLIENTES:CREAR'] };
-  const body = { identificacion: 'test', nombre: 'Prueba' };
+  const body = { identificacion: '1-0234-0567', nombre: 'Prueba' };
   assert.equal(parseCustomer(body, user).creditoActivo, false);
   assert.throws(() => parseCustomer({ ...body, creditoActivo: 'false' }, user), e => e.statusCode === 400);
   for (const extra of [{ creditoActivo: true }, { limiteCredito: 100 }, { diasCredito: 30 }]) {
@@ -33,4 +33,13 @@ test('crear clientes valida condiciones de crédito y exige autorización indepe
   const authorized = { ...user, permisos: ['CLIENTES:EDITAR'] };
   assert.throws(() => parseCustomer({ ...body, creditoActivo: true, limiteCredito: 100, diasCredito: 0 }, authorized), e => e.statusCode === 400);
   assert.equal(parseCustomer({ ...body, creditoActivo: true, limiteCredito: 100, diasCredito: 30 }, authorized).limiteCredito.toString(), '100');
+});
+test('clientes persona y empresa validan el formato de identificación de Costa Rica (CLI-001)', () => {
+  const user = { roles: ['CAJERO'], permisos: ['CLIENTES:CREAR'] };
+  assert.equal(parseCustomer({ tipoIdentificacion: 'CEDULA_JURIDICA', identificacion: '3-101-123456', nombre: 'Empresa S.A.', contacto: 'Ana' }, user).contacto, 'Ana');
+  assert.equal(parseCustomer({ tipoIdentificacion: 'DIMEX', identificacion: '155812345678', nombre: 'Residente' }, user).tipoIdentificacion, 'DIMEX');
+  assert.equal(parseCustomer({ tipoIdentificacion: 'PASAPORTE', identificacion: 'AB123456', nombre: 'Turista' }, user).identificacion, 'AB123456');
+  for (const [tipo, id] of [['CEDULA_FISICA', '12345'], ['CEDULA_JURIDICA', '1-0234-0567'], ['DIMEX', '123'], ['PASAPORTE', '12'], ['JURIDICA', '3101123456']]) {
+    assert.throws(() => parseCustomer({ tipoIdentificacion: tipo, identificacion: id, nombre: 'X' }, user), (e) => e.statusCode === 400, `${tipo} ${id}`);
+  }
 });

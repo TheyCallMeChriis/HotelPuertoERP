@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ==========================================
-// 1. SEGURIDAD Y ACCESO (RBAC + AUDITORÍA)
+// 1. SECURITY AND ACCESS (RBAC + AUDIT)
 // ==========================================
 
 model User {
@@ -20,6 +20,8 @@ model User {
   activo       Boolean     @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   roles                 UserRole[]
   auditLogs             AuditLog[]
@@ -33,7 +35,17 @@ model User {
   ajustesAprobados      InventoryAdjustment[] @relation("AjusteAprobador")
   ordenesCompra         PurchaseOrder[]
   recepcionesCompra     PurchaseReceipt[]
+  ventasSuspendidas     SuspendedSale[]
+  tomasFisicas          PhysicalCount[]  @relation("TomaCreador")
+  tomasAplicadas        PhysicalCount[]  @relation("TomaAplicador")
 
+  abonosRegistrados CustomerPayment[] @relation("AbonoUsuario")
+  abonosAnulados    CustomerPayment[] @relation("AbonoAnuladoUsuario")
+
+  solicitudesCompra PurchaseRequest[] @relation("SolicitudSolicitante")
+  solicitudesRevisadas PurchaseRequest[] @relation("SolicitudRevisor")
+
+  notasCredito      CreditNote[] @relation("NotaCreditoUsuario")
   @@map("usuarios")
 }
 
@@ -43,6 +55,9 @@ model Role {
   descripcion String?
   activo      Boolean        @default(true)
   createdAt   DateTime       @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   users       UserRole[]
   permissions RolePermission[]
@@ -100,7 +115,7 @@ model AuditLog {
 }
 
 // ==========================================
-// 2. CATÁLOGOS COMERCIALES
+// 2. COMMERCIAL CATALOGS
 // ==========================================
 
 model Category {
@@ -109,6 +124,9 @@ model Category {
   descripcion String?
   activo      Boolean   @default(true)
   createdAt   DateTime  @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   products    Product[]
 
@@ -123,12 +141,14 @@ model Product {
   categoriaId  String
   precioVenta  Decimal     @db.Decimal(12, 2)
   costo        Decimal     @default(0.00) @db.Decimal(12, 2)
-  impuesto     Decimal     @default(13.00) @db.Decimal(5, 2) // % IVA por defecto
+  impuesto     Decimal     @default(13.00) @db.Decimal(5, 2) // default VAT %
   codigoBarras String?
   esServicio   Boolean     @default(false)
   activo       Boolean     @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   categoria             Category                @relation(fields: [categoriaId], references: [id])
   saleDetails           SaleDetail[]
@@ -138,13 +158,16 @@ model Product {
   adjustmentDetails     InventoryAdjustmentDetail[]
   purchaseOrderDetails  PurchaseOrderDetail[]
   receiptDetails        PurchaseReceiptDetail[]
+  physicalCountDetails  PhysicalCountDetail[]
 
+  solicitudesCompra PurchaseRequestDetail[]
+  devoluciones      CreditNoteDetail[]
   @@map("productos")
 }
 
 model Customer {
   id                 String   @id @default(cuid())
-  tipoIdentificacion String   @default("CEDULA_FISICA") // CEDULA_FISICA, JURIDICA, PASAPORTE
+  tipoIdentificacion String   @default("CEDULA_FISICA") // CEDULA_FISICA, CEDULA_JURIDICA (company), DIMEX, PASAPORTE
   identificacion     String   @unique
   nombre             String
   email              String?
@@ -155,14 +178,20 @@ model Customer {
   creditoActivo      Boolean  @default(false)
   activo             Boolean  @default(true)
   createdAt          DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  contacto      String?  // contact person when the customer is a company (CLI-001)
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   ventas             Sale[]
+  ventasSuspendidas  SuspendedSale[]
+  abonos             CustomerPayment[]
 
   @@map("clientes")
 }
 
 // ==========================================
-// 3. PUNTOS DE VENTA, CAJAS Y TURNOS
+// 3. POINTS OF SALE, CASH REGISTERS AND SHIFTS
 // ==========================================
 
 model CashRegister {
@@ -171,6 +200,10 @@ model CashRegister {
   nombre    String
   ubicacion String?
   activo    Boolean      @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   shifts    CashShift[]
   points    PointOfSale[]
@@ -186,12 +219,32 @@ model PointOfSale {
   cajaId           String
   bodegaDefectoId  String
   activo           Boolean      @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   caja             CashRegister @relation(fields: [cajaId], references: [id])
   bodegaDefecto    Warehouse    @relation(fields: [bodegaDefectoId], references: [id])
   ventas           Sale[]
+  ventasSuspendidas SuspendedSale[]
 
   @@map("puntos_venta")
+}
+
+// Operating departments (GEN-004). PointOfSale.departamento stores the code.
+model Department {
+  id          String   @id @default(cuid())
+  codigo      String   @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
+
+  @@map("departamentos")
 }
 
 model CashShift {
@@ -203,7 +256,7 @@ model CashShift {
   fechaCierre     DateTime?
   montoContado    Decimal?       @db.Decimal(12, 2)
   montoEsperado   Decimal?       @db.Decimal(12, 2)
-  diferencia      Decimal?       @db.Decimal(12, 2) // Sobrante (+) o Faltante (-)
+  diferencia      Decimal?       @db.Decimal(12, 2) // Overage (+) or shortage (-)
   estado          String         @default("ABIERTA") // "ABIERTA", "CERRADA"
   notas           String?
 
@@ -211,6 +264,8 @@ model CashShift {
   usuario         User           @relation(fields: [usuarioId], references: [id])
   movements       CashMovement[]
   ventas          Sale[]
+  abonos          CustomerPayment[]
+  notasCredito    CreditNote[]
 
   @@map("aperturas_caja")
 }
@@ -231,7 +286,7 @@ model CashMovement {
 }
 
 // ==========================================
-// 4. VENTAS, DETALLE Y FORMAS DE PAGO
+// 4. SALES, LINE ITEMS AND PAYMENT METHODS
 // ==========================================
 
 model PaymentMethod {
@@ -241,7 +296,9 @@ model PaymentMethod {
   activo    Boolean       @default(true)
 
   pagos     SalePayment[]
+  abonos    CustomerPayment[]
 
+  notasCredito   CreditNote[]
   @@map("formas_pago")
 }
 
@@ -261,6 +318,8 @@ model Sale {
   usuarioAnulacionId String?
   fechaAnulacion     DateTime?
   notas              String?
+  fechaVencimiento   DateTime?     // credit sales: sale date + customer credit term (CLI-006)
+  impresiones        Int           @default(1) // 1 = original print; reprints are marked as copies (FAC-006)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -272,6 +331,8 @@ model Sale {
   details            SaleDetail[]
   payments           SalePayment[]
   cargoHabitacion    RoomCharge?
+  abonosAplicados    CustomerPaymentApplication[]
+  notasCredito       CreditNote[]
 
   @@map("ventas")
 }
@@ -290,8 +351,75 @@ model SaleDetail {
 
   sale           Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product        Product  @relation(fields: [productId], references: [id])
+  devoluciones   CreditNoteDetail[]
 
   @@map("detalle_ventas")
+}
+
+// Credit note: full or partial reversal of a sale through an authorized flow (FAC-005).
+// It never modifies the original sale: it offsets it with its own linked document.
+model CreditNote {
+  id                   String        @id @default(cuid())
+  consecutivo          String        @unique // NC-000001
+  saleId               String
+  usuarioId            String
+  tipo                 String        // TOTAL, PARCIAL
+  motivo               String
+  subtotal             Decimal       @db.Decimal(12, 2)
+  impuesto             Decimal       @db.Decimal(12, 2)
+  total                Decimal       @db.Decimal(12, 2)
+  paymentMethodId      String        // payment method used to refund the money
+  cashShiftId          String?       // shift the refunded cash is taken from
+  referencia           String?
+  reintegraInventario  Boolean       @default(true)
+  impresiones          Int           @default(1)
+  createdAt            DateTime      @default(now())
+
+  sale                 Sale          @relation(fields: [saleId], references: [id])
+  usuario              User          @relation("NotaCreditoUsuario", fields: [usuarioId], references: [id])
+  paymentMethod        PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  cashShift            CashShift?    @relation(fields: [cashShiftId], references: [id])
+  details              CreditNoteDetail[]
+
+  @@index([saleId])
+  @@map("notas_credito")
+}
+
+model CreditNoteDetail {
+  id            String     @id @default(cuid())
+  creditNoteId  String
+  saleDetailId  String
+  productId     String
+  cantidad      Decimal    @db.Decimal(12, 3)
+  subtotal      Decimal    @db.Decimal(12, 2)
+  impuesto      Decimal    @db.Decimal(12, 2)
+  total         Decimal    @db.Decimal(12, 2)
+
+  creditNote    CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  saleDetail    SaleDetail @relation(fields: [saleDetailId], references: [id])
+  product       Product    @relation(fields: [productId], references: [id])
+
+  @@map("detalle_notas_credito")
+}
+
+// Suspended sales (POS-006): cart draft with no sequence number and no payments;
+// it does not touch cash or inventory. Deleted when completed or discarded.
+model SuspendedSale {
+  id            String      @id @default(cuid())
+  pointOfSaleId String
+  usuarioId     String
+  customerId    String?
+  etiqueta      String
+  notas         String?
+  items         Json
+  createdAt     DateTime    @default(now())
+
+  pointOfSale   PointOfSale @relation(fields: [pointOfSaleId], references: [id])
+  usuario       User        @relation(fields: [usuarioId], references: [id])
+  customer      Customer?   @relation(fields: [customerId], references: [id])
+
+  @@index([pointOfSaleId])
+  @@map("ventas_suspendidas")
 }
 
 model SalePayment {
@@ -299,7 +427,7 @@ model SalePayment {
   saleId          String
   paymentMethodId String
   monto           Decimal       @db.Decimal(12, 2)
-  referencia      String?       // Voucher, número de transferencia, etc.
+  referencia      String?       // Card voucher, transfer number, etc.
   createdAt       DateTime      @default(now())
 
   sale            Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -308,8 +436,50 @@ model SalePayment {
   @@map("pagos_venta")
 }
 
+// Accounts receivable (CLI-005/006): customer payments applied to credit sales
+model CustomerPayment {
+  id                 String    @id @default(cuid())
+  consecutivo        String    @unique // ABO-000001
+  customerId         String
+  usuarioId          String
+  paymentMethodId    String
+  cashShiftId        String?   // shift that received the money (required for cash)
+  monto              Decimal   @db.Decimal(12, 2)
+  referencia         String?
+  notas              String?
+  estado             String    @default("APLICADO") // APLICADO, ANULADO
+  motivoAnulacion    String?
+  usuarioAnulacionId String?
+  fechaAnulacion     DateTime?
+  createdAt          DateTime  @default(now())
+
+  customer           Customer      @relation(fields: [customerId], references: [id])
+  usuario            User          @relation("AbonoUsuario", fields: [usuarioId], references: [id])
+  usuarioAnulacion   User?         @relation("AbonoAnuladoUsuario", fields: [usuarioAnulacionId], references: [id])
+  paymentMethod      PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  cashShift          CashShift?    @relation(fields: [cashShiftId], references: [id])
+  aplicaciones       CustomerPaymentApplication[]
+
+  @@index([customerId])
+  @@map("abonos_clientes")
+}
+
+// Portion of a customer payment applied to one credit sale
+model CustomerPaymentApplication {
+  id        String          @id @default(cuid())
+  paymentId String
+  saleId    String
+  monto     Decimal         @db.Decimal(12, 2)
+
+  payment   CustomerPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  sale      Sale            @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@map("aplicaciones_abonos")
+}
+
 // ==========================================
-// 5. INVENTARIO, MULTIBODEGA Y KARDEX
+// 5. INVENTORY, MULTI-WAREHOUSE AND STOCK LEDGER (KARDEX)
 // ==========================================
 
 model Warehouse {
@@ -318,6 +488,10 @@ model Warehouse {
   nombre      String
   ubicacion   String?
   activo      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   stocks              Stock[]
   puntosVenta         PointOfSale[]
@@ -327,7 +501,9 @@ model Warehouse {
   ajustes             InventoryAdjustment[]
   ordenesCompra       PurchaseOrder[]
   recepcionesCompra   PurchaseReceipt[]
+  tomasFisicas        PhysicalCount[]
 
+  solicitudesCompra PurchaseRequest[]
   @@map("bodegas")
 }
 
@@ -350,12 +526,12 @@ model InventoryMovement {
   id                  String    @id @default(cuid())
   warehouseId         String
   productId           String
-  tipo                String    // ENTRADA_COMPRA, SALIDA_VENTA, TRASLADO_ORIGEN, TRASLADO_DESTINO, AJUSTE_POSITIVO, AJUSTE_NEGATIVO, MERMA
+  tipo                String    // ENTRADA_COMPRA, ENTRADA_MANUAL, ENTRADA_DEVOLUCION, SALIDA_VENTA, SALIDA_MANUAL, TRASLADO_SALIDA, TRASLADO_ENTRADA, AJUSTE_POSITIVO, AJUSTE_NEGATIVO, MERMA
   cantidad            Decimal   @db.Decimal(12, 3)
   saldoAnterior       Decimal   @db.Decimal(12, 3)
   saldoNuevo          Decimal   @db.Decimal(12, 3)
   costoUnitario       Decimal   @default(0.00) @db.Decimal(12, 2)
-  documentoReferencia String?   // Consecutivo de venta, orden, o traslado
+  documentoReferencia String?   // Sequence number of the sale, order or transfer
   motivo              String?
   usuarioId           String
   fecha               DateTime  @default(now())
@@ -428,8 +604,45 @@ model InventoryAdjustmentDetail {
   @@map("detalle_ajustes")
 }
 
+// Physical inventory count (INV-007): system quantities are frozen when the count starts,
+// counts are recorded, and applying the count adjusts each difference through ledger movements.
+model PhysicalCount {
+  id              String                @id @default(cuid())
+  consecutivo     String                @unique // e.g. "TF-000001"
+  warehouseId     String
+  estado          String                @default("ABIERTA") // ABIERTA, APLICADA, ANULADA
+  notas           String?
+  usuarioId       String
+  aplicadoPorId   String?
+  fechaInicio     DateTime              @default(now())
+  fechaAplicacion DateTime?
+
+  warehouse       Warehouse             @relation(fields: [warehouseId], references: [id])
+  usuario         User                  @relation("TomaCreador", fields: [usuarioId], references: [id])
+  aplicadoPor     User?                 @relation("TomaAplicador", fields: [aplicadoPorId], references: [id])
+  details         PhysicalCountDetail[]
+
+  @@index([warehouseId, estado])
+  @@map("tomas_fisicas")
+}
+
+model PhysicalCountDetail {
+  id               String        @id @default(cuid())
+  physicalCountId  String
+  productId        String
+  cantidadSistema  Decimal       @db.Decimal(12, 3)
+  cantidadContada  Decimal?      @db.Decimal(12, 3)
+  cantidadAjustada Decimal?      @db.Decimal(12, 3)
+
+  physicalCount    PhysicalCount @relation(fields: [physicalCountId], references: [id], onDelete: Cascade)
+  product          Product       @relation(fields: [productId], references: [id])
+
+  @@unique([physicalCountId, productId])
+  @@map("detalle_tomas_fisicas")
+}
+
 // ==========================================
-// 6. COMPRAS Y PROVEEDORES
+// 6. PURCHASING AND SUPPLIERS
 // ==========================================
 
 model Supplier {
@@ -441,8 +654,12 @@ model Supplier {
   telefono       String?
   direccion      String?
   diasCredito    Int             @default(0)
+  condicionesPago String?        // e.g. "Cash", "30-day credit against invoice" (COM-009)
   activo         Boolean         @default(true)
   createdAt      DateTime        @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  creadoPor     String?  // user who created the record (GEN-008)
+  modificadoPor String?  // last user who modified the record (GEN-008)
 
   purchaseOrders PurchaseOrder[]
 
@@ -470,8 +687,50 @@ model PurchaseOrder {
   usuario        User                  @relation(fields: [usuarioId], references: [id])
   details        PurchaseOrderDetail[]
   receipts       PurchaseReceipt[]
+  solicitudes    PurchaseRequest[]
 
   @@map("ordenes_compra")
+}
+
+// Internal purchase requests with approval (COM-002, COM-003)
+// PENDIENTE -> APROBADA -> CONVERTIDA (into a purchase order) | RECHAZADA | CANCELADA
+model PurchaseRequest {
+  id                   String    @id @default(cuid())
+  consecutivo          String    @unique // SC-000001
+  solicitanteId        String
+  warehouseId          String    // warehouse that will receive the goods
+  departamento         String?
+  justificacion        String
+  prioridad            String    @default("NORMAL") // NORMAL, URGENTE
+  estado               String    @default("PENDIENTE")
+  revisorId            String?
+  fechaRevision        DateTime?
+  comentarioRevision   String?
+  purchaseOrderId      String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @default(now()) @updatedAt
+
+  solicitante          User           @relation("SolicitudSolicitante", fields: [solicitanteId], references: [id])
+  revisor              User?          @relation("SolicitudRevisor", fields: [revisorId], references: [id])
+  warehouse            Warehouse      @relation(fields: [warehouseId], references: [id])
+  purchaseOrder        PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  details              PurchaseRequestDetail[]
+
+  @@index([estado])
+  @@map("solicitudes_compra")
+}
+
+model PurchaseRequestDetail {
+  id                String          @id @default(cuid())
+  purchaseRequestId String
+  productId         String
+  cantidad          Decimal         @db.Decimal(12, 3)
+  notas             String?
+
+  purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  product           Product         @relation(fields: [productId], references: [id])
+
+  @@map("detalle_solicitudes_compra")
 }
 
 model PurchaseOrderDetail {
@@ -513,6 +772,8 @@ model PurchaseReceiptDetail {
   productId        String
   cantidadRecibida Decimal         @db.Decimal(12, 3)
   costoUnitario    Decimal         @db.Decimal(12, 2)
+  costoAnterior    Decimal?        @db.Decimal(12, 2) // product cost before this receipt (INV-011)
+  costoNuevo       Decimal?        @db.Decimal(12, 2) // resulting cost according to the configured costing method
 
   receipt          PurchaseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   product          Product         @relation(fields: [productId], references: [id])
@@ -521,7 +782,7 @@ model PurchaseReceiptDetail {
 }
 
 // ==========================================
-// 7. INTEGRACIÓN HOTELERA / PMS
+// 7. HOTEL INTEGRATION / PMS
 // ==========================================
 
 model Room {
@@ -558,8 +819,8 @@ model RoomCharge {
   roomId          String
   guestId         String
   monto           Decimal               @db.Decimal(12, 2)
-  transaccionUuid String                @unique // Token de idempotencia único para evitar duplicación (PMS-005)
-  estadoPMS       String                @default("PENDIENTE") // PENDIENTE, CONFIRMADO, ERROR, ANULADO (simulador)
+  transaccionUuid String                @unique // Unique idempotency token that prevents duplicate charges (PMS-005)
+  estadoPMS       String                @default("PENDIENTE") // PENDIENTE, CONFIRMADO, ERROR, ANULADO (simulator)
   reintentos      Int                   @default(0)
   respuestaPMS    String?               @db.Text
   createdAt       DateTime              @default(now())
@@ -590,7 +851,7 @@ model PMSIntegrationQueue {
 }
 
 // ==========================================
-// 8. CONFIGURACIÓN Y PARÁMETROS DEL SISTEMA
+// 8. SYSTEM CONFIGURATION AND PARAMETERS
 // ==========================================
 
 model SystemParameter {

@@ -1,4 +1,4 @@
-// Ejecutar solo contra el servidor temporal de pruebas; nunca usa la URL del hotel.
+// Run only against the temporary test server; it never uses the hotel database URL.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -147,7 +147,7 @@ test('ruta manual exige permiso de ajuste y conserva saldos de entrada/salida', 
   const body = { warehouseId: f.warehouse.id, productId: f.product.id, tipo: 'AJUSTE_NEGATIVO', cantidad: 1, motivo: 'Prueba' };
   await assert.rejects(registrarMovimientoManual({ body, user: operator() }, res()), e => e.statusCode === 403);
   await registrarMovimientoManual({ body, user: { ...operator(), permisos: ['INVENTARIO:AJUSTE'] } }, res());
-  await registrarMovimientoManual({ body: { ...body, tipo: 'ENTRADA_COMPRA', cantidad: 0.125 }, user: operator() }, res());
+  await registrarMovimientoManual({ body: { ...body, tipo: 'ENTRADA_MANUAL', cantidad: 0.125 }, user: operator() }, res());
   assert.equal(await stock(f), '4.125');
 });
 

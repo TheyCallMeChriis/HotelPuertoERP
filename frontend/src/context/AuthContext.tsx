@@ -1,3 +1,5 @@
+// Authentication state shared by the whole app: current user, login/logout and permission checks.
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api, getAuthToken, setAuthToken, removeAuthToken } from '../api/client';
 
@@ -14,13 +16,15 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (username: string, pass: string) => Promise<{ success: boolean; message?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  startSession: (token: string, user: User) => void;
   hasRole: (role: string) => boolean;
   hasPermission: (modulo: string, accion: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Restores the session on load (validating the stored token with /auth/me) and reacts to expired sessions.
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('pos_user');
@@ -45,6 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     initAuth();
+    const onExpired = () => setUser(null);
+    window.addEventListener('auth:expired', onExpired);
+    return () => window.removeEventListener('auth:expired', onExpired);
   }, []);
 
   const login = async (username: string, pass: string) => {
@@ -58,7 +65,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, message: res.message || 'Error al iniciar sesión' };
   };
 
-  const logout = () => {
+  // Starts a session with an already issued token (initial administrator registration)
+  const startSession = (token: string, newUser: User) => {
+    setAuthToken(token);
+    setUser(newUser);
+    localStorage.setItem('pos_user', JSON.stringify(newUser));
+  };
+
+  const logout = async () => {
+    // Record the logout in the audit log before discarding the token (SEG-003)
+    if (getAuthToken()) await api.auth.logout().catch(() => undefined);
     removeAuthToken();
     setUser(null);
   };
@@ -75,12 +91,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, startSession, hasRole, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
+// Access to the authentication context
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth debe ser usado dentro de un AuthProvider');

@@ -1,26 +1,29 @@
+// Cash register screen (CAJ-001 to CAJ-008): open, extraordinary movements, cash count and closing history.
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { numberFromInput, validNumberInput } from '../utils/number-input';
 import {
   DollarSign,
-  ArrowUpRight,
-  ArrowDownLeft,
   Lock,
   Unlock,
   AlertCircle,
-  FileText,
   Clock,
-  User,
 } from 'lucide-react';
 
+// Cash register operations for the selected register
 export const Caja: React.FC = () => {
+  // Buttons are shown according to permissions; the backend still validates every action (SEG-002)
+  const { hasPermission } = useAuth();
+  const puedeAbrir = hasPermission('CAJA', 'CREAR');
+  const puedeCerrar = hasPermission('CAJA', 'EDITAR');
   const [cajas, setCajas] = useState<any[]>([]);
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string>('');
   const [turnoActivo, setTurnoActivo] = useState<any | null>(null);
   const [historico, setHistorico] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  // Modales
+  // Modals
   const [modalApertura, setModalApertura] = useState(false);
   const [montoApertura, setMontoApertura] = useState<number | string>(25000);
   const [notasApertura, setNotasApertura] = useState('');
@@ -36,32 +39,21 @@ export const Caja: React.FC = () => {
   const [resumenCierre, setResumenCierre] = useState<any | null>(null);
 
   const cargarCajas = async () => {
-    const res = await api.catalogos.getPuntosVenta();
+    // Every active register, including those not yet linked to a point of sale
+    const res = await api.catalogos.getCajas();
     if (res.success && res.data) {
-      const distinctCajas: any[] = [];
-      const ids = new Set();
-      for (const p of res.data) {
-        if (p.caja && !ids.has(p.caja.id)) {
-          ids.add(p.caja.id);
-          distinctCajas.push(p.caja);
-        }
-      }
-      setCajas(distinctCajas);
-      if (distinctCajas.length > 0 && !cajaSeleccionada) {
-        setCajaSeleccionada(distinctCajas[0].id);
-      }
+      setCajas(res.data);
+      if (res.data.length > 0 && !cajaSeleccionada) setCajaSeleccionada(res.data[0].id);
     }
   };
 
   const cargarEstadoCaja = async (id: string) => {
-    setLoading(true);
     const [resTurno, resHist] = await Promise.all([
       api.caja.getTurnoActivo(id),
       api.caja.getHistorico(id),
     ]);
     setTurnoActivo(resTurno.success && resTurno.data ? resTurno.data : null);
     setHistorico(resHist.success && resHist.data ? resHist.data : []);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -74,7 +66,7 @@ export const Caja: React.FC = () => {
     }
   }, [cajaSeleccionada]);
 
-  // Apertura
+  // Opening
   const handleAbrirCaja = async () => {
     if (!validNumberInput(montoApertura)) { alert('Indique un fondo inicial válido; puede ser cero.'); return; }
     const res = await api.caja.abrirCaja({
@@ -90,7 +82,7 @@ export const Caja: React.FC = () => {
     }
   };
 
-  // Movimiento Extraordinario
+  // Extraordinary movement
   const handleRegistrarMovimiento = async () => {
     if ((!validNumberInput(montoMovimiento) || numberFromInput(montoMovimiento) <= 0) || !motivoMovimiento) {
       alert('Debe indicar monto y motivo');
@@ -112,7 +104,7 @@ export const Caja: React.FC = () => {
     }
   };
 
-  // Cierre de Caja
+  // Register closing
   const handleCerrarCaja = async () => {
     if (!validNumberInput(montoContado)) { alert('Indique el monto contado; puede ser cero.'); return; }
     const res = await api.caja.cerrarCaja({
@@ -129,7 +121,7 @@ export const Caja: React.FC = () => {
     }
   };
 
-  // Cálculos en vivo para el turno activo
+  // Live figures for the active shift
   let totalEfectivoVentas = 0;
   let totalOtrosMedios = 0;
   if (turnoActivo?.ventas) {
@@ -150,12 +142,17 @@ export const Caja: React.FC = () => {
     }
   }
 
+  // Customer payments received in cash during the shift (CLI-005)
+  const abonosEfectivo = (turnoActivo?.abonos || [])
+    .filter((a: any) => a.paymentMethod?.codigo === 'EFECTIVO')
+    .reduce((t: number, a: any) => t + Number(a.monto), 0);
+
   const fondoInicial = turnoActivo ? Number(turnoActivo.montoInicial) : 0;
-  const saldoEsperadoEfectivo = fondoInicial + totalEfectivoVentas + entradasExtra - salidasExtra;
+  const saldoEsperadoEfectivo = fondoInicial + totalEfectivoVentas + abonosEfectivo + entradasExtra - salidasExtra;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Selector de Caja y Estado */}
+      {/* Register selector and status */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center space-x-3">
           <label className="text-xs font-bold text-gray-500 uppercase">Seleccionar Caja:</label>
@@ -166,16 +163,16 @@ export const Caja: React.FC = () => {
           >
             {cajas.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.nombre} ({c.ubicacion})
+                {c.nombre}{c.ubicacion ? ` (${c.ubicacion})` : ''}
               </option>
             ))}
           </select>
         </div>
 
-        {/* Acciones principales */}
+        {/* Main actions */}
         <div className="flex space-x-3">
           {!turnoActivo ? (
-            <button
+            puedeAbrir && <button
               onClick={() => setModalApertura(true)}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow flex items-center space-x-1.5"
             >
@@ -184,14 +181,14 @@ export const Caja: React.FC = () => {
             </button>
           ) : (
             <>
-              <button
+              {puedeAbrir && <button
                 onClick={() => setModalMovimiento(true)}
                 className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg flex items-center space-x-1"
               >
                 <DollarSign className="w-4 h-4 text-emerald-600" />
                 <span>Movimiento Extraordinario</span>
-              </button>
-              <button
+              </button>}
+              {puedeCerrar && <button
                 onClick={() => {
                   setMontoContado(saldoEsperadoEfectivo);
                   setModalCierre(true);
@@ -200,13 +197,13 @@ export const Caja: React.FC = () => {
               >
                 <Lock className="w-4 h-4" />
                 <span>Cierre de Caja y Arqueo</span>
-              </button>
+              </button>}
             </>
           )}
         </div>
       </div>
 
-      {/* DETALLE DEL TURNO ACTUAL O MENSAJE DE CAJA CERRADA */}
+      {/* CURRENT SHIFT DETAIL OR CLOSED-REGISTER MESSAGE */}
       {turnoActivo ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
@@ -239,6 +236,11 @@ export const Caja: React.FC = () => {
               <span className="text-xs text-red-600 font-bold block">
                 -₡{salidasExtra.toLocaleString()} salidas
               </span>
+              {abonosEfectivo > 0 && (
+                <span className="text-xs text-blue-600 font-bold block">
+                  +₡{abonosEfectivo.toLocaleString()} abonos de clientes
+                </span>
+              )}
             </div>
           </div>
 
@@ -261,17 +263,17 @@ export const Caja: React.FC = () => {
           <p className="text-xs text-amber-700 mt-1 max-w-md mx-auto">
             Para que los cajeros puedan facturar y registrar cobros en los puntos de venta asociados, debe realizar la apertura de turno con un fondo inicial en efectivo.
           </p>
-          <button
+          {puedeAbrir && <button
             onClick={() => setModalApertura(true)}
             className="mt-4 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow inline-flex items-center space-x-1.5"
           >
             <Unlock className="w-4 h-4" />
             <span>Abrir Caja Ahora</span>
-          </button>
+          </button>}
         </div>
       )}
 
-      {/* HISTORIAL DE CIERRES ANTERIORES (CAJ-008) */}
+      {/* HISTORY OF PREVIOUS CLOSINGS (CAJ-008) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-sm font-bold text-gray-800">Historial de Turnos y Arqueos de Caja</h3>
@@ -337,7 +339,7 @@ export const Caja: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL APERTURA DE CAJA */}
+      {/* OPEN REGISTER MODAL */}
       {modalApertura && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -389,7 +391,7 @@ export const Caja: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL MOVIMIENTO EXTRAORDINARIO */}
+      {/* EXTRAORDINARY MOVEMENT MODAL */}
       {modalMovimiento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -449,7 +451,7 @@ export const Caja: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL CIERRE DE CAJA Y ARQUEO */}
+      {/* REGISTER CLOSING AND CASH COUNT MODAL */}
       {modalCierre && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -525,7 +527,7 @@ export const Caja: React.FC = () => {
         </div>
       )}
 
-      {/* REPORTE DE CIERRE FINALIZADO */}
+      {/* COMPLETED CLOSING REPORT */}
       {resumenCierre && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">

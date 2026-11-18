@@ -1,3 +1,5 @@
+// Cash register routes (/api/caja).
+
 import { Router } from 'express';
 import {
   getTurnoActivo,

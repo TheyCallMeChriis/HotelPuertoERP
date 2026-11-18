@@ -1,4 +1,4 @@
-// Operación explícita para la instalación PostgreSQL local. No imprime claves.
+// Explicit operation for the local PostgreSQL installation. Never prints passwords.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -8,6 +8,7 @@ const dotenv = require('../backend/node_modules/dotenv');
 const { PrismaClient } = require('../backend/node_modules/@prisma/client');
 const bcrypt = require('../backend/node_modules/bcryptjs');
 
+// Creates a directory readable only by the current user
 function privateDirectory(directory) {
   fs.mkdirSync(directory, { recursive: true });
   const identity = spawnSync('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true });
@@ -16,16 +17,22 @@ function privateDirectory(directory) {
   const acl = spawnSync('icacls.exe', [directory, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { encoding: 'utf8', windowsHide: true });
   if (acl.status !== 0) throw Error('No se pudo restringir el acceso al archivo de recuperación');
 }
+// Replaces (or appends) KEY=value lines in an .env file
 function replaceEnv(text, name, value) {
   const line = `${name}=${JSON.stringify(value)}`;
   const pattern = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=.*$`, 'm');
   return pattern.test(text) ? text.replace(pattern, () => line) : `${text.trimEnd()}\n${line}\n`;
 }
+// Writes through a temporary file and renames it, so a crash never leaves a half-written file
 function atomicWrite(file, text) {
   const temp = `${file}.pending-${crypto.randomUUID()}`;
   fs.writeFileSync(temp, text, { flag: 'wx' });
   fs.renameSync(temp, file);
 }
+// Usage: node scripts/harden-local-installation.cjs --apply <pgData> <verified backup folder>
+// Requires a verified backup. Replaces "trust" rules in pg_hba.conf with scram-sha-256, sets a random
+// password on the PostgreSQL role, rotates JWT_SECRET, resets demo passwords still in use, and saves
+// the previous files plus the new credentials in a private recovery folder.
 async function main() {
   const [mode, pgData, backupDirectory] = process.argv.slice(2);
   if (mode !== '--apply' || !pgData || !backupDirectory || !process.env.LOCALAPPDATA) {
@@ -82,8 +89,8 @@ async function main() {
     ].join('\n'), { flag: 'wx' });
     await p.$transaction(async tx => {
       await tx.$executeRawUnsafe("SET LOCAL password_encryption = 'scram-sha-256'");
-      // Identificador de la conexión verificada y clave hexadecimal generada,
-      // escapados explícitamente; nunca se recibe SQL del usuario.
+      // Identifier of the verified connection and the generated hexadecimal password,
+      // explicitly escaped; SQL is never taken from user input.
       await tx.$executeRawUnsafe(`ALTER ROLE "${identity[0].name.replaceAll('"', '""')}" PASSWORD '${dbPassword}'`);
       for (const user of legacy) {
         const updated = await tx.user.updateMany({ where: { id: user.id, passwordHash: user.passwordHash }, data: { passwordHash: user.nextHash } });
@@ -96,7 +103,7 @@ async function main() {
     const errors = await p.$queryRawUnsafe('SELECT error FROM pg_hba_file_rules WHERE error IS NOT NULL');
     if (errors.length) throw Error('PostgreSQL detectó una regla inválida');
     await p.$queryRawUnsafe('SELECT pg_reload_conf()');
-    // Recargar es asíncrono: esperar como máximo dos segundos a que se exija contraseña.
+    // Reloading is asynchronous: wait at most two seconds until a password is required.
     let rejected = false;
     const wrongUrl = new URL(newUrl); wrongUrl.password = crypto.randomBytes(24).toString('hex');
     for (let attempt = 0; attempt < 10 && !rejected; attempt++) {

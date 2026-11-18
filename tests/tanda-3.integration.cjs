@@ -1,4 +1,4 @@
-// Ejecutar solo contra el servidor temporal de pruebas; nunca usa la URL del hotel.
+// Run only against the temporary test server; it never uses the hotel database URL.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -68,7 +68,7 @@ function successes(results, count) {
 
 test('compras validan cantidades, costos, fechas y duplicados sin documentos parciales', async () => {
   const f = await orderFixture();
-  assert.equal(f.order.total.toString(), '0'); // cero explícito no se sustituye por el costo del catálogo
+  assert.equal(f.order.total.toString(), '0'); // an explicit zero is not replaced by the catalog cost
   for (const value of [0, -1, false, 'abc', 1.0001]) {
     await assert.rejects(createPurchaseOrder(prisma, { ...f.orderBody, items: [{ productId: f.product.id, cantidadSolicitada: value }] }, user.id), invalid);
   }

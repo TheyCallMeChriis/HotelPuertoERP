@@ -1,7 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 
-// Permisos mínimos de los perfiles iniciales. No concede descuentos ni
-// anulaciones a operadores; los permisos personalizados existentes se conservan.
+// Minimum permissions for the initial profiles. Operators get no discount or
+// cancellation permissions; existing custom permissions are preserved.
+// Full permission catalog (module × action). Created when missing, without touching custom assignments.
+export const PERMISSION_MODULES = [
+  'VENTAS', 'CAJA', 'INVENTARIO', 'COMPRAS', 'CLIENTES', 'PROVEEDORES', 'REPORTES', 'SEGURIDAD', 'HOTEL_PMS', 'CATALOGOS',
+] as const;
+// APROBAR: approve or reject purchase requests (COM-003)
+export const PERMISSION_ACTIONS = ['VER', 'CREAR', 'EDITAR', 'ANULAR', 'DESCUENTO', 'AJUSTE', 'APROBAR'] as const;
+
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   CAJERO: [
     'VENTAS:VER', 'VENTAS:CREAR',
@@ -10,16 +17,32 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'HOTEL_PMS:VER', 'HOTEL_PMS:CREAR',
   ],
   RESTAURANTE_BAR: ['VENTAS:VER', 'VENTAS:CREAR', 'HOTEL_PMS:VER', 'HOTEL_PMS:CREAR'],
-  BODEGA: ['INVENTARIO:VER', 'INVENTARIO:CREAR', 'INVENTARIO:AJUSTE'],
+  BODEGA: ['INVENTARIO:VER', 'INVENTARIO:CREAR', 'INVENTARIO:EDITAR', 'INVENTARIO:AJUSTE', 'CATALOGOS:VER'],
   PROVEEDURIA: [
     'COMPRAS:VER', 'COMPRAS:CREAR', 'COMPRAS:EDITAR',
-    'PROVEEDORES:VER', 'PROVEEDORES:CREAR',
-    'INVENTARIO:VER', 'INVENTARIO:CREAR',
+    'PROVEEDORES:VER', 'PROVEEDORES:CREAR', 'PROVEEDORES:EDITAR',
+    'INVENTARIO:VER', 'INVENTARIO:CREAR', 'CATALOGOS:VER',
   ],
-  CONTABILIDAD: ['REPORTES:VER', 'CAJA:VER', 'COMPRAS:VER', 'VENTAS:VER'],
-  AUDITOR: ['REPORTES:VER'],
+  CONTABILIDAD: ['REPORTES:VER', 'CAJA:VER', 'COMPRAS:VER', 'VENTAS:VER', 'CATALOGOS:VER', 'CLIENTES:VER', 'PROVEEDORES:VER'],
+  AUDITOR: ['REPORTES:VER', 'SEGURIDAD:VER'],
 };
 
+// Registers any missing permissions (module × action), for example CATALOGOS when upgrading
+// an existing installation. It does not assign permissions to roles or change existing ones.
+export async function ensurePermissionCatalog(prisma: PrismaClient): Promise<number> {
+  let created = 0;
+  for (const modulo of PERMISSION_MODULES) {
+    for (const accion of PERMISSION_ACTIONS) {
+      const exists = await prisma.permission.findUnique({ where: { modulo_accion: { modulo, accion } } });
+      if (exists) continue;
+      await prisma.permission.create({ data: { modulo, accion, descripcion: `Permiso para ${accion} en ${modulo}` } });
+      created++;
+    }
+  }
+  return created;
+}
+
+// Grants every permission to ADMINISTRADOR and the minimum set to each initial role. Idempotent.
 export async function ensureDefaultPermissions(prisma: PrismaClient): Promise<number> {
   return prisma.$transaction(async (tx) => {
     const roles = await tx.role.findMany();
@@ -27,8 +50,8 @@ export async function ensureDefaultPermissions(prisma: PrismaClient): Promise<nu
     const roleByName = new Map(roles.map((role) => [role.nombre, role]));
     const permissionByName = new Map(permissions.map((p) => [`${p.modulo}:${p.accion}`, p]));
 
-    // Validar el catálogo antes de escribir: este procedimiento no carga datos
-    // de demostración ni crea roles que aún no estén instalados.
+    // Validate the catalog before writing: this procedure loads no demo data
+    // and does not create roles that are not installed yet.
     for (const name of ['ADMINISTRADOR', ...Object.keys(DEFAULT_ROLE_PERMISSIONS)]) {
       if (!roleByName.has(name)) throw new Error(`Falta el rol inicial ${name}`);
     }
@@ -52,5 +75,5 @@ export async function ensureDefaultPermissions(prisma: PrismaClient): Promise<nu
       }
     }
     return processed;
-  });
+  }, { timeout: 60000 });
 }

@@ -1,21 +1,22 @@
+// PMS screen (PMS-002 to PMS-008): occupied rooms, charge simulator, retries and reconciliation.
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { numberFromInput, validNumberInput } from '../utils/number-input';
-import { Hotel, Send, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileText } from 'lucide-react';
+import { Hotel, Send, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 
+// Hotel integration screen
 export const PMS: React.FC = () => {
   const [habitaciones, setHabitaciones] = useState<any[]>([]);
   const [conciliacion, setConciliacion] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  // Simulador de envío
+  // Charge simulator
   const [habitacionId, setHabitacionId] = useState('');
   const [montoCargo, setMontoCargo] = useState<number | string>(15000);
   const [simularError, setSimularError] = useState(false);
   const [resultadoSimulacion, setResultadoSimulacion] = useState<any | null>(null);
 
   const cargarDatos = async () => {
-    setLoading(true);
     const [resHabs, resConc] = await Promise.all([
       api.pms.getHabitacionesOcupadas(),
       api.pms.getConciliacion(),
@@ -28,14 +29,13 @@ export const PMS: React.FC = () => {
       }
     }
     if (resConc.success) setConciliacion(resConc.data || null);
-    setLoading(false);
   };
 
   useEffect(() => {
     cargarDatos();
   }, []);
 
-  // Enviar cargo simulado
+  // Send a simulated charge
   const handleEnviarCargo = async () => {
     if (!validNumberInput(montoCargo) || numberFromInput(montoCargo) <= 0) { alert('Indique un importe positivo para el cargo'); return; }
     const hab = habitaciones.find((h) => h.id === habitacionId);
@@ -55,7 +55,7 @@ export const PMS: React.FC = () => {
     cargarDatos();
   };
 
-  // Reintentar cargo fallido
+  // Retry a failed charge
   const handleReintentar = async (cargoId: string) => {
     const res = await api.pms.reintentarCargo(cargoId);
     if (res.success) {
@@ -79,7 +79,7 @@ export const PMS: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* SIMULADOR INTERACTIVO */}
+        {/* INTERACTIVE SIMULATOR */}
         <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
           <h3 className="font-bold text-sm text-gray-800 border-b pb-2">
             Simulador de Cargos a Habitación
@@ -111,7 +111,7 @@ export const PMS: React.FC = () => {
             />
           </div>
 
-          {/* Switch de Simulación de Error */}
+          {/* Error simulation switch */}
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-amber-900 block">Simular Fallo de Conexión PMS</span>
@@ -133,7 +133,7 @@ export const PMS: React.FC = () => {
             <span>Enviar Cargo a PMS</span>
           </button>
 
-          {/* Resultado de la simulación */}
+          {/* Simulation result */}
           {resultadoSimulacion && (
             <div
               className={`p-3 rounded-lg border text-xs ${
@@ -165,7 +165,7 @@ export const PMS: React.FC = () => {
           )}
         </div>
 
-        {/* TABLA DE CONCILIACIÓN PMS (PMS-008) */}
+        {/* PMS RECONCILIATION TABLE (PMS-008) */}
         <div className="lg:col-span-7 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h3 className="text-sm font-bold text-gray-800">Reporte de Conciliación POS vs PMS</h3>
@@ -175,7 +175,7 @@ export const PMS: React.FC = () => {
             </button>
           </div>
 
-          {/* Resumen de indicadores de conciliación */}
+          {/* Reconciliation summary indicators */}
           {conciliacion?.resumen && (
             <div className="grid grid-cols-3 gap-2 p-4 bg-gray-50 border-b text-center text-xs">
               <div>
@@ -188,8 +188,37 @@ export const PMS: React.FC = () => {
               </div>
               <div>
                 <span className="text-red-600 font-bold block">Fallidos/Pendientes:</span>
-                <span className="font-bold text-red-700 text-base">{conciliacion.resumen.fallidos}</span>
+                <span className="font-bold text-red-700 text-base">{conciliacion.resumen.fallidos + conciliacion.resumen.pendientes}</span>
               </div>
+              <div className="col-span-3 text-[10px] text-gray-400">
+                Integración: adaptador «{conciliacion.resumen.adaptador}» · {conciliacion.resumen.ventasCobradasAHabitacion} venta(s) cobradas a habitación
+              </div>
+            </div>
+          )}
+
+          {/* Differences between sales and charges (PMS-008) */}
+          {conciliacion && (
+            <div className={`px-4 py-3 border-b text-xs ${conciliacion.diferencias?.length ? 'bg-red-50' : 'bg-emerald-50'}`}>
+              {conciliacion.diferencias?.length ? (
+                <>
+                  <p className="font-bold text-red-800 mb-2">{conciliacion.diferencias.length} diferencia(s) entre ventas y PMS</p>
+                  <ul className="space-y-1">
+                    {conciliacion.diferencias.map((d: any, i: number) => (
+                      <li key={i} className="text-red-700">
+                        <span className="font-mono font-bold">{d.venta}</span> · {d.detalle}
+                        {d.montoCargo !== null && ` (venta ₡${Number(d.montoVenta).toLocaleString()} / cargo ₡${Number(d.montoCargo).toLocaleString()})`}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="font-semibold text-emerald-800">Sin diferencias: todas las ventas cobradas a habitación tienen su cargo con el mismo monto.</p>
+              )}
+              {conciliacion.pendientes?.length > 0 && (
+                <p className="mt-2 text-amber-800">
+                  {conciliacion.pendientes.length} cargo(s) pendientes de confirmar en el PMS; use «Reintentar» en la tabla.
+                </p>
+              )}
             </div>
           )}
 

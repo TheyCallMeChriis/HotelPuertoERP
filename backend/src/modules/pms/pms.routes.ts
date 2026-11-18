@@ -1,3 +1,5 @@
+// PMS routes (/api/pms).
+
 import { Router } from 'express';
 import {
   getHabitacionesOcupadas,

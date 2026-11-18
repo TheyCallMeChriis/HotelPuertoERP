@@ -55,7 +55,7 @@ try {
         $started += Start-Process -FilePath $shellPath -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$runner`"", '-Service', $service) -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDirectory "$service.out.log") -RedirectStandardError (Join-Path $logDirectory "$service.err.log")
     }
     $ready = $false
-    for ($attempt = 0; $attempt -lt 45; $attempt++) {
+    for ($attempt = 0; $attempt -lt 120; $attempt++) {
         foreach ($process in $started) { $process.Refresh(); if ($process.HasExited) { throw 'Un servidor termino durante el inicio. Revise tmp/server-logs.' } }
         try {
             $health = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/api/health" -TimeoutSec 1
@@ -64,7 +64,7 @@ try {
         } catch { }
         Start-Sleep -Seconds 1
     }
-    if (-not $ready) { throw 'Los servidores no respondieron a tiempo. Revise tmp/server-logs.' }
+    if (-not $ready) { throw 'Los servidores no respondieron en 2 minutos. Revise tmp/server-logs.' }
     Write-Host 'Servidores disponibles: http://127.0.0.1:3000'
     Write-Host "Procesos iniciadores: $($started.Id -join ', '). Logs: $logDirectory"
     Write-Host 'El health check verifica la API; las operaciones de base de datos se comprueban por separado.'

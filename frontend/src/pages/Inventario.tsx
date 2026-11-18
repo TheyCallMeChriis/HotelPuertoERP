@@ -1,35 +1,54 @@
+// Inventory screen (INV-001 to INV-010): stock per warehouse, ledger, manual movements, transfers,
+// adjustments, minimum/maximum levels and physical counts.
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { numberFromInput, validNumberInput } from '../utils/number-input';
+import { useAuth } from '../context/AuthContext';
+import { Alert, Button, Field, Modal, Tabs, inputClass } from '../components/ui';
+import { TomaFisica } from '../components/TomaFisica';
 import {
-  Package,
   ArrowRightLeft,
   Sliders,
-  AlertTriangle,
   History,
-  PlusCircle,
-  FileSpreadsheet,
+  ArrowDownToLine,
+  Gauge,
 } from 'lucide-react';
 
+// Manual movement types offered to the user (document types are created by their own flows)
+const TIPOS_MOVIMIENTO = [
+  { value: 'ENTRADA_MANUAL', label: 'Entrada (donación, devolución interna, sobrante)', entrada: true },
+  { value: 'SALIDA_MANUAL', label: 'Salida (consumo interno, uso operativo)', entrada: false },
+  { value: 'MERMA', label: 'Merma o desperdicio', entrada: false },
+];
+
+// Inventory screen for the selected warehouse
 export const Inventario: React.FC = () => {
+  const { hasPermission } = useAuth();
+  const puedeMover = hasPermission('INVENTARIO', 'CREAR');
+  const puedeConfigurar = hasPermission('INVENTARIO', 'EDITAR');
+  const [productos, setProductos] = useState<any[]>([]);
+  const [movimiento, setMovimiento] = useState<{ tipo: string; productId: string; cantidad: string; motivo: string } | null>(null);
+  const [nivel, setNivel] = useState<{ stock: any; minimo: string; maximo: string } | null>(null);
+  const [errorModal, setErrorModal] = useState('');
+  const [mensaje, setMensaje] = useState('');
+  const [vista, setVista] = useState<'existencias' | 'toma'>('existencias');
   const [bodegas, setBodegas] = useState<any[]>([]);
   const [bodegaActual, setBodegaActual] = useState<string>('');
   const [existencias, setExistencias] = useState<any[]>([]);
   const [soloBajoMinimo, setSoloBajoMinimo] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // Modal Kardex
+  // Stock ledger modal
   const [kardexModal, setKardexModal] = useState<any[] | null>(null);
   const [productoKardex, setProductoKardex] = useState<any | null>(null);
 
-  // Modal Traslado
+  // Transfer modal
   const [modalTraslado, setModalTraslado] = useState(false);
   const [trasladoDestino, setTrasladoDestino] = useState('');
   const [trasladoProducto, setTrasladoProducto] = useState('');
   const [trasladoCantidad, setTrasladoCantidad] = useState<number | string>(1);
-  const [trasladoNotas, setTrasladoNotas] = useState('');
 
-  // Modal Ajuste
+  // Adjustment modal
   const [modalAjuste, setModalAjuste] = useState(false);
   const [ajusteTipo, setAjusteTipo] = useState<'POSITIVO' | 'NEGATIVO'>('POSITIVO');
   const [ajusteProducto, setAjusteProducto] = useState('');
@@ -47,7 +66,6 @@ export const Inventario: React.FC = () => {
   };
 
   const cargarExistencias = async () => {
-    setLoading(true);
     const res = await api.inventario.getExistencias({
       warehouseId: bodegaActual || undefined,
       soloBajoMinimo,
@@ -55,12 +73,59 @@ export const Inventario: React.FC = () => {
     if (res.success) {
       setExistencias(res.data || []);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     cargarBodegas();
+    api.catalogos.getProductos().then((r) => {
+      if (r.success) setProductos((r.data || []).filter((p: any) => !p.esServicio));
+    });
   }, []);
+
+  // Manual entry / exit / shrinkage with a reason (INV-003, INV-004, REC-005)
+  const guardarMovimiento = async () => {
+    if (!movimiento) return;
+    if (!movimiento.productId || !validNumberInput(movimiento.cantidad) || numberFromInput(movimiento.cantidad) <= 0 || !movimiento.motivo.trim()) {
+      setErrorModal('Seleccione producto, cantidad mayor a cero y motivo');
+      return;
+    }
+    const res = await api.inventario.registrarMovimiento({
+      warehouseId: bodegaActual,
+      productId: movimiento.productId,
+      tipo: movimiento.tipo,
+      cantidad: numberFromInput(movimiento.cantidad),
+      motivo: movimiento.motivo.trim(),
+    });
+    if (!res.success) {
+      setErrorModal(res.message || 'No se pudo registrar el movimiento');
+      return;
+    }
+    setMovimiento(null);
+    setMensaje(`Movimiento registrado. Saldo nuevo: ${Number(res.data?.saldoNuevo ?? 0)}`);
+    cargarExistencias();
+  };
+
+  // Minimum and maximum stock per warehouse (INV-009)
+  const guardarNivel = async () => {
+    if (!nivel) return;
+    if (!validNumberInput(nivel.minimo) || (nivel.maximo !== '' && !validNumberInput(nivel.maximo))) {
+      setErrorModal('Indique cantidades válidas');
+      return;
+    }
+    const res = await api.inventario.configurarNiveles({
+      warehouseId: bodegaActual,
+      productId: nivel.stock.product.id,
+      stockMinimo: numberFromInput(nivel.minimo),
+      stockMaximo: nivel.maximo === '' ? undefined : numberFromInput(nivel.maximo),
+    });
+    if (!res.success) {
+      setErrorModal(res.message || 'No se pudo guardar');
+      return;
+    }
+    setNivel(null);
+    setMensaje(`Mínimo de ${nivel.stock.product.nombre} actualizado`);
+    cargarExistencias();
+  };
 
   useEffect(() => {
     if (bodegaActual) {
@@ -68,7 +133,7 @@ export const Inventario: React.FC = () => {
     }
   }, [bodegaActual, soloBajoMinimo]);
 
-  // Ver Kardex
+  // Open the stock ledger
   const verKardex = async (prod: any) => {
     setProductoKardex(prod);
     const res = await api.inventario.getKardex(prod.id, bodegaActual);
@@ -77,7 +142,7 @@ export const Inventario: React.FC = () => {
     }
   };
 
-  // Realizar Traslado
+  // Perform a transfer
   const handleTraslado = async () => {
     if (!trasladoDestino || !trasladoProducto || (!validNumberInput(trasladoCantidad) || numberFromInput(trasladoCantidad) <= 0)) {
       alert('Complete todos los campos del traslado');
@@ -87,7 +152,6 @@ export const Inventario: React.FC = () => {
       warehouseOrigenId: bodegaActual,
       warehouseDestinoId: trasladoDestino,
       items: [{ productId: trasladoProducto, cantidad: numberFromInput(trasladoCantidad) }],
-      notas: trasladoNotas,
     });
     if (res.success) {
       alert('Traslado realizado exitosamente');
@@ -98,7 +162,7 @@ export const Inventario: React.FC = () => {
     }
   };
 
-  // Realizar Ajuste
+  // Perform an adjustment
   const handleAjuste = async () => {
     if (!ajusteProducto || (!validNumberInput(ajusteCantidad) || numberFromInput(ajusteCantidad) <= 0) || !ajusteMotivo) {
       alert('Producto, cantidad y motivo obligatorio son requeridos');
@@ -121,7 +185,8 @@ export const Inventario: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Barra de control */}
+      <Tabs tabs={[{ id: 'existencias', label: 'Existencias y Kardex' }, { id: 'toma', label: 'Toma física' }]} active={vista} onChange={(v) => setVista(v as any)} />
+      {/* Control bar */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center space-x-3">
           <label className="text-xs font-bold text-gray-500 uppercase">Bodega:</label>
@@ -137,7 +202,7 @@ export const Inventario: React.FC = () => {
             ))}
           </select>
 
-          <label className="flex items-center space-x-1.5 text-xs text-gray-600 cursor-pointer ml-4">
+          <label className={`flex items-center space-x-1.5 text-xs text-gray-600 cursor-pointer ml-4 ${vista === 'toma' ? 'hidden' : ''}`}>
             <input
               type="checkbox"
               checked={soloBajoMinimo}
@@ -148,7 +213,16 @@ export const Inventario: React.FC = () => {
           </label>
         </div>
 
-        <div className="flex space-x-2">
+        <div className={`flex flex-wrap gap-2 ${vista === 'toma' ? 'hidden' : ''}`}>
+          {puedeMover && (
+            <button
+              onClick={() => { setErrorModal(''); setMovimiento({ tipo: 'ENTRADA_MANUAL', productId: '', cantidad: '1', motivo: '' }); }}
+              className="px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center space-x-1 transition"
+            >
+              <ArrowDownToLine className="w-4 h-4" />
+              <span>Entrada / Salida</span>
+            </button>
+          )}
           <button
             onClick={() => setModalTraslado(true)}
             className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold flex items-center space-x-1 transition"
@@ -166,7 +240,12 @@ export const Inventario: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabla de existencias */}
+      {mensaje && <Alert kind="success" message={mensaje} onClose={() => setMensaje('')} />}
+
+      {vista === 'toma' && <TomaFisica bodegas={bodegas} bodegaId={bodegaActual} onAplicada={cargarExistencias} />}
+
+      {vista === 'existencias' && (<>
+      {/* Stock table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-sm font-bold text-gray-800">Existencias Actuales en Bodega</h3>
@@ -197,7 +276,17 @@ export const Inventario: React.FC = () => {
                     <td className="px-6 py-3 font-bold text-gray-800">{e.product?.nombre}</td>
                     <td className="px-6 py-3 text-gray-500">{e.product?.categoria?.nombre}</td>
                     <td className="px-6 py-3 text-right font-extrabold text-sm text-gray-900">{cant}</td>
-                    <td className="px-6 py-3 text-right text-gray-500">{min}</td>
+                    <td className="px-6 py-3 text-right text-gray-500">
+                      {puedeConfigurar ? (
+                        <button
+                          onClick={() => { setErrorModal(''); setNivel({ stock: e, minimo: String(min), maximo: String(Number(e.stockMaximo)) }); }}
+                          className="inline-flex items-center gap-1 hover:text-emerald-700 hover:underline"
+                          title="Configurar mínimo y máximo"
+                        >
+                          {min} <Gauge className="w-3 h-3" />
+                        </button>
+                      ) : min}
+                    </td>
                     <td className="px-6 py-3 text-center">
                       <span
                         className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -226,7 +315,7 @@ export const Inventario: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL KARDEX INMUTABLE (INV-008) */}
+      {/* IMMUTABLE STOCK LEDGER MODAL (INV-008) */}
       {kardexModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4">
@@ -267,7 +356,8 @@ export const Inventario: React.FC = () => {
                     </tr>
                   ) : (
                     kardexModal.map((m) => {
-                      const esEntrada = ['ENTRADA_COMPRA', 'AJUSTE_POSITIVO', 'TRASLADO_ENTRADA'].includes(m.tipo);
+                      // An entry is any movement that increased the balance (purchases, returns, transfers in, positive adjustments)
+                      const esEntrada = Number(m.saldoNuevo) > Number(m.saldoAnterior);
                       return (
                         <tr key={m.id}>
                           <td className="px-4 py-2">{new Date(m.fecha).toLocaleString()}</td>
@@ -311,7 +401,62 @@ export const Inventario: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL TRASLADO */}
+      </>)}
+
+      {movimiento && (
+        <Modal
+          title="Movimiento manual de inventario"
+          onClose={() => setMovimiento(null)}
+          footer={<><Button variant="secondary" onClick={() => setMovimiento(null)}>Cancelar</Button><Button onClick={guardarMovimiento}>Registrar</Button></>}
+        >
+          {errorModal && <Alert kind="error" message={errorModal} />}
+          <p className="text-xs text-gray-500">
+            Bodega: <strong>{bodegas.find((b) => b.id === bodegaActual)?.nombre}</strong>. Todo movimiento genera Kardex con usuario y motivo.
+          </p>
+          <Field label="Tipo de movimiento" required>
+            <select value={movimiento.tipo} onChange={(e) => setMovimiento({ ...movimiento, tipo: e.target.value })} className={inputClass}>
+              {TIPOS_MOVIMIENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Producto" required>
+            <select value={movimiento.productId} onChange={(e) => setMovimiento({ ...movimiento, productId: e.target.value })} className={inputClass}>
+              <option value="">Seleccione producto...</option>
+              {productos.map((p) => {
+                const disp = existencias.find((x) => x.product?.id === p.id);
+                return <option key={p.id} value={p.id}>{p.codigo} · {p.nombre} (Disp: {disp ? Number(disp.cantidad) : 0})</option>;
+              })}
+            </select>
+          </Field>
+          <Field label="Cantidad" required>
+            <input type="number" min="0" step="0.001" value={movimiento.cantidad} onChange={(e) => setMovimiento({ ...movimiento, cantidad: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="Motivo" required>
+            <textarea rows={2} value={movimiento.motivo} onChange={(e) => setMovimiento({ ...movimiento, motivo: e.target.value })} className={inputClass}
+              placeholder={TIPOS_MOVIMIENTO.find((t) => t.value === movimiento.tipo)?.entrada ? 'Ej.: devolución de cocina' : 'Ej.: producto vencido'} />
+          </Field>
+        </Modal>
+      )}
+
+      {nivel && (
+        <Modal
+          title={`Niveles de existencia · ${nivel.stock.product?.nombre}`}
+          onClose={() => setNivel(null)}
+          footer={<><Button variant="secondary" onClick={() => setNivel(null)}>Cancelar</Button><Button onClick={guardarNivel}>Guardar</Button></>}
+        >
+          {errorModal && <Alert kind="error" message={errorModal} />}
+          <p className="text-xs text-gray-500">No modifica la existencia; solo define cuándo se alerta por stock bajo.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Stock mínimo" required>
+              <input type="number" min="0" step="0.001" value={nivel.minimo} onChange={(e) => setNivel({ ...nivel, minimo: e.target.value })} className={inputClass} />
+            </Field>
+            <Field label="Stock máximo">
+              <input type="number" min="0" step="0.001" value={nivel.maximo} onChange={(e) => setNivel({ ...nivel, maximo: e.target.value })} className={inputClass} />
+            </Field>
+          </div>
+        </Modal>
+      )}
+
+      {/* TRANSFER MODAL */}
       {modalTraslado && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -383,7 +528,7 @@ export const Inventario: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL AJUSTE */}
+      {/* ADJUSTMENT MODAL */}
       {modalAjuste && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">

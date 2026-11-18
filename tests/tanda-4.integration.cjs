@@ -1,4 +1,4 @@
-// Ejecutar solo contra el servidor temporal de pruebas; nunca usa la URL del hotel.
+// Run only against the temporary test server; it never uses the hotel database URL.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -87,7 +87,7 @@ test('dos cajas simultáneas no sobrepasan el cupo del mismo cliente', async () 
 });
 
 test('cajero no puede crear un cliente con cupo; administrador sí', async () => {
-  const body = { identificacion: randomUUID(), nombre: 'Prueba', creditoActivo: true, limiteCredito: 100, diasCredito: 30 };
+  const body = { identificacion: String(100000000 + Math.floor(Math.random() * 899999999)), nombre: 'Prueba', creditoActivo: true, limiteCredito: 100, diasCredito: 30 };
   await assert.rejects(createCliente({ body, user: operator() }, res()), e => e.statusCode === 403);
   assert.equal(await prisma.customer.count({ where: { identificacion: body.identificacion } }), 0);
   const response = res(); await createCliente({ body, user: admin() }, response);

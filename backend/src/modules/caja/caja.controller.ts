@@ -1,10 +1,13 @@
+// Cash register endpoints (/api/caja). Business rules live in cash-operations.ts.
+
 import { Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { registrarAuditoria } from '../../utils/audit';
 import { openCash, recordCashMovement, closeCash } from './cash-operations';
+import { dateRange } from '../reportes/report-filters';
 
-// 1. OBTENER TURNO DE CAJA ABIERTO ACTUAL (CAJ-002)
+// 1. GET THE CURRENT OPEN CASH SHIFT (CAJ-002)
 export const getTurnoActivo = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { cajaId } = req.query;
 
@@ -15,7 +18,7 @@ export const getTurnoActivo = async (req: AuthenticatedRequest, res: Response): 
   if (cajaId) {
     whereClause.cajaId = String(cajaId);
   } else {
-    // Si no se especifica caja, busca la caja abierta por este usuario
+    // When no register is given, look for the register opened by this user
     whereClause.usuarioId = req.user?.id;
   }
 
@@ -25,6 +28,7 @@ export const getTurnoActivo = async (req: AuthenticatedRequest, res: Response): 
       caja: true,
       usuario: { select: { id: true, nombre: true, username: true } },
       movements: true,
+      abonos: { where: { estado: 'APLICADO' }, include: { paymentMethod: true } },
       ventas: {
         where: { estado: 'COMPLETADA' },
         include: {
@@ -43,7 +47,7 @@ export const getTurnoActivo = async (req: AuthenticatedRequest, res: Response): 
   });
 };
 
-// 2. APERTURA DE CAJA (CAJ-001)
+// 2. OPEN A CASH REGISTER (CAJ-001)
 export const abrirCaja = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const turno = await openCash(prisma, req.body, req.user!.id);
   const { cajaId, montoInicial } = turno;
@@ -64,7 +68,7 @@ export const abrirCaja = async (req: AuthenticatedRequest, res: Response): Promi
   });
 };
 
-// 3. REGISTRAR MOVIMIENTO EXTRAORDINARIO (CAJ-003)
+// 3. RECORD AN EXTRAORDINARY CASH MOVEMENT (CAJ-003)
 export const registrarMovimiento = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const movimiento = await recordCashMovement(prisma, req.body, req.user!.id);
   const { cashShiftId, tipo, monto, motivo } = movimiento;
@@ -85,7 +89,7 @@ export const registrarMovimiento = async (req: AuthenticatedRequest, res: Respon
   });
 };
 
-// 4. CIERRE DE CAJA Y ARQUEO (CAJ-004, CAJ-005, CAJ-006, CAJ-007)
+// 4. CLOSE THE REGISTER AND RECONCILE CASH (CAJ-004, CAJ-005, CAJ-006, CAJ-007)
 export const cerrarCaja = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const result = await closeCash(prisma, req.body);
   await registrarAuditoria({
@@ -95,11 +99,14 @@ export const cerrarCaja = async (req: AuthenticatedRequest, res: Response): Prom
   res.json({ success: true, message: 'Caja cerrada exitosamente', data: result });
 };
 
-// 5. HISTORICO DE APERTURAS Y CIERRES (CAJ-008)
+// 5. HISTORY OF OPENINGS AND CLOSINGS (CAJ-008)
 export const getHistoricoCierres = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { cajaId } = req.query;
+  const { cajaId, estado } = req.query;
   const whereClause: any = {};
   if (cajaId) whereClause.cajaId = String(cajaId);
+  if (estado === 'ABIERTA' || estado === 'CERRADA') whereClause.estado = estado;
+  const rango = dateRange(req.query); // CAJ-008: filter by opening date
+  if (rango) whereClause.fechaApertura = rango;
 
   const turnos = await prisma.cashShift.findMany({
     where: whereClause,
@@ -108,7 +115,7 @@ export const getHistoricoCierres = async (req: AuthenticatedRequest, res: Respon
       usuario: { select: { nombre: true, username: true } },
     },
     orderBy: { fechaApertura: 'desc' },
-    take: 50,
+    take: rango ? 500 : 50,
   });
 
   res.json({ success: true, data: turnos });

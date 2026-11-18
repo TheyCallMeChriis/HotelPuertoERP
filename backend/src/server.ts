@@ -1,9 +1,10 @@
+// API entry point: global middleware, health check, module routers and error handling.
 import express from 'express';
 import cors from 'cors';
 import { ENV } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
 
-// Módulos de rutas
+// Route modules
 import authRoutes from './modules/auth/auth.routes';
 import catalogosRoutes from './modules/catalogos/catalogos.routes';
 import cajaRoutes from './modules/caja/caja.routes';
@@ -13,15 +14,17 @@ import comprasRoutes from './modules/compras/compras.routes';
 import pmsRoutes from './modules/pms/pms.routes';
 import reportesRoutes from './modules/reportes/reportes.routes';
 import auditoriaRoutes from './modules/auditoria/auditoria.routes';
+import adminRoutes from './modules/admin/admin.routes';
+import cxcRoutes from './modules/cxc/cxc.routes';
 
 const app = express();
 
-// Middlewares globales
+// Global middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Endpoint de verificación de estado (Health Check)
+// Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'OK',
@@ -31,7 +34,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Enrutamiento de la API REST modular
+// Modular REST API routing
 app.use('/api/auth', authRoutes);
 app.use('/api/catalogos', catalogosRoutes);
 app.use('/api/caja', cajaRoutes);
@@ -41,11 +44,13 @@ app.use('/api/compras', comprasRoutes);
 app.use('/api/pms', pmsRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/cxc', cxcRoutes);
 
-// Manejo centralizado de errores
+// Centralized error handling
 app.use(errorHandler);
 
-// Iniciar servidor
+// Start the server
 app.listen(ENV.PORT, () => {
   console.log(`======================================================`);
   console.log(`🚀 SERVIDOR POS-ERP HOTELERO EN EJECUCIÓN`);

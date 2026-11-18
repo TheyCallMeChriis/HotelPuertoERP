@@ -1,3 +1,7 @@
+// Validation of environment variables. Kept free of side effects so it can be unit tested.
+
+// Validates and normalizes runtime settings; throws a descriptive error on the first invalid value.
+// JWT_EXPIRES_IN accepts "<n>s|m|h|d" and is returned in seconds.
 export function validateEnvironment(source: NodeJS.ProcessEnv) {
   const secret = source.JWT_SECRET?.trim();
   if (!secret || secret.length < 32 || /cambiar|fallback_secret|reemplazar/i.test(secret)) {
@@ -21,6 +25,7 @@ export function validateEnvironment(source: NodeJS.ProcessEnv) {
   return { PORT: port, NODE_ENV: source.NODE_ENV ?? 'development', DATABASE_URL: database!, JWT_SECRET: secret, JWT_EXPIRES_IN: seconds };
 }
 
+// Reads the passwords used by the demo seed. They must differ and have at least 12 characters.
 export function seedPasswords(source: NodeJS.ProcessEnv) {
   const admin = source.SEED_ADMIN_PASSWORD;
   const operator = source.SEED_OPERATOR_PASSWORD;

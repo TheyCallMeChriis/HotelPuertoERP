@@ -1,6 +1,10 @@
+// Demo data seed (npm run prisma:seed): payment methods, roles, permissions, users, warehouses,
+// registers, points of sale, products, a sample customer and supplier, and PMS rooms and guests.
+// It is idempotent (upserts) and never changes passwords of existing users.
+
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { ensureDefaultPermissions } from '../src/utils/default-permissions';
+import { ensureDefaultPermissions, PERMISSION_ACTIONS, PERMISSION_MODULES } from '../src/utils/default-permissions';
 import dotenv from 'dotenv';
 import path from 'path';
 import { seedPasswords } from '../src/config/validate-env';
@@ -9,11 +13,12 @@ dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 const prisma = new PrismaClient();
 
+// Seeds every catalog in dependency order
 async function main() {
   const passwords = seedPasswords(process.env);
   console.log('--- INICIANDO SEMBRADO DE DATOS (SEED) ---');
 
-  // 1. FORMAS DE PAGO OBLIGATORIAS
+  // 1. REQUIRED PAYMENT METHODS
   const paymentMethods = [
     { codigo: 'EFECTIVO', nombre: 'Efectivo' },
     { codigo: 'TARJETA', nombre: 'Tarjeta de Crédito / Débito' },
@@ -53,9 +58,9 @@ async function main() {
   }
   console.log('✅ Roles del sistema sembrados');
 
-  // 3. PERMISOS
-  const modulos = ['VENTAS', 'CAJA', 'INVENTARIO', 'COMPRAS', 'CLIENTES', 'PROVEEDORES', 'REPORTES', 'SEGURIDAD', 'HOTEL_PMS'];
-  const acciones = ['VER', 'CREAR', 'EDITAR', 'ANULAR', 'DESCUENTO', 'AJUSTE'];
+  // 3. PERMISSIONS
+  const modulos = PERMISSION_MODULES;
+  const acciones = PERMISSION_ACTIONS;
 
   for (const mod of modulos) {
     for (const acc of acciones) {
@@ -74,7 +79,7 @@ async function main() {
   await ensureDefaultPermissions(prisma);
   console.log('✅ Permisos y matriz RBAC sembrados');
 
-  // 4. USUARIOS INICIALES (con contraseñas hash seguras)
+  // 4. INITIAL USERS (passwords stored as secure hashes)
   const passwordSalt = await bcrypt.genSalt(10);
   const defaultAdminPass = await bcrypt.hash(passwords.admin, passwordSalt);
   const defaultOperPass = await bcrypt.hash(passwords.operator, passwordSalt);
@@ -111,7 +116,7 @@ async function main() {
   }
   console.log('✅ Usuarios iniciales creados');
 
-  // 5. BODEGAS
+  // 5. WAREHOUSES
   const bodegaCentral = await prisma.warehouse.upsert({
     where: { codigo: 'BOD-01' },
     update: {},
@@ -125,7 +130,7 @@ async function main() {
   });
   console.log('✅ Bodegas sembradas');
 
-  // 6. CAJAS Y PUNTOS DE VENTA
+  // 6. CASH REGISTERS AND POINTS OF SALE
   const cajaPrincipal = await prisma.cashRegister.upsert({
     where: { codigo: 'CAJA-01' },
     update: {},
@@ -137,6 +142,15 @@ async function main() {
     update: {},
     create: { codigo: 'CAJA-02', nombre: 'Caja Bar y Restaurante', ubicacion: 'Bar Piscina' },
   });
+
+  for (const dep of [
+    { codigo: 'RECEPCION', nombre: 'Recepción' },
+    { codigo: 'RESTAURANTE', nombre: 'Restaurante' },
+    { codigo: 'BAR', nombre: 'Bar' },
+    { codigo: 'SOUVENIRS', nombre: 'Souvenirs' },
+  ]) {
+    await prisma.department.upsert({ where: { codigo: dep.codigo }, update: {}, create: dep });
+  }
 
   await prisma.pointOfSale.upsert({
     where: { codigo: 'POS-01' },
@@ -163,7 +177,7 @@ async function main() {
   });
   console.log('✅ Cajas y Puntos de Venta configurados');
 
-  // 7. CATEGORÍAS Y PRODUCTOS
+  // 7. CATEGORIES AND PRODUCTS
   const catBebidas = await prisma.category.upsert({
     where: { nombre: 'Bebidas' },
     update: {},
@@ -205,7 +219,7 @@ async function main() {
       },
     });
 
-    // Crear existencia inicial en Bodega Central
+    // Create the initial stock in the central warehouse
     await prisma.stock.upsert({
       where: { warehouseId_productId: { warehouseId: bodegaCentral.id, productId: prod.id } },
       update: {},
@@ -220,7 +234,7 @@ async function main() {
   }
   console.log('✅ Catálogo de productos y stock inicial cargados');
 
-  // 8. CLIENTE Y PROVEEDOR DE PRUEBA
+  // 8. SAMPLE CUSTOMER AND SUPPLIER
   await prisma.customer.upsert({
     where: { identificacion: '3-101-999999' },
     update: {},
@@ -250,7 +264,7 @@ async function main() {
   });
   console.log('✅ Clientes y Proveedores sembrados');
 
-  // 9. HABITACIONES Y HUÉSPEDES (PARA SIMULACIÓN PMS)
+  // 9. ROOMS AND GUESTS (FOR THE PMS SIMULATION)
   const hab101 = await prisma.room.upsert({
     where: { numero: '101' },
     update: {},

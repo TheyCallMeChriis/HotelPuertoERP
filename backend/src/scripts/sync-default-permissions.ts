@@ -1,10 +1,17 @@
+// npm run permissions:sync — adds missing permissions to the catalog and grants the default ones,
+// without loading demo data. iniciar.bat runs it on every start.
+
 import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 import { prisma } from '../utils/prisma';
-import { ensureDefaultPermissions } from '../utils/default-permissions';
+import { ensureDefaultPermissions, ensurePermissionCatalog } from '../utils/default-permissions';
 
-ensureDefaultPermissions(prisma)
+ensurePermissionCatalog(prisma)
+  .then((nuevos) => {
+    if (nuevos > 0) console.log(`Permisos nuevos registrados en el catálogo: ${nuevos}.`);
+    return ensureDefaultPermissions(prisma);
+  })
   .then((count) => console.log(`Permisos iniciales sincronizados: ${count} asignaciones verificadas.`))
   .catch((error: unknown) => {
     console.error('No se pudieron sincronizar los permisos. Verifique la conexión y que los roles y permisos iniciales estén instalados.');

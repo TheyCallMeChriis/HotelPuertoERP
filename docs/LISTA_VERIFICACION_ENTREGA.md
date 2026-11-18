@@ -2,7 +2,7 @@
 
 Estado de cumplimiento de todos los puntos de la lista de verificación final para la práctica profesional:
 
-- [x] **El sistema inicia correctamente desde una instalación documentada:** Verificado con scripts `start_servers.bat` y `start_servers.ps1` y [docs/MANUAL_INSTALACION.md](file:///c:/Users/chris/OneDrive/Escritorio/Proyecto/docs/MANUAL_INSTALACION.md).
+- [x] **El sistema inicia correctamente desde una instalación documentada:** Verificado con `iniciar.bat` y `detener.bat` y [docs/MANUAL_INSTALACION.md](file:///c:/Users/chris/OneDrive/Escritorio/Proyecto/docs/MANUAL_INSTALACION.md).
 - [x] **Existe un usuario administrador inicial configurable:** Usuario `admin` con contraseña cifrada bcrypt y rol `ADMINISTRADOR`.
 - [x] **Los roles y permisos fueron probados:** Matriz RBAC implementada con 7 roles y permisos por módulo/acción evaluados en el servidor.
 - [x] **Puede abrirse y cerrarse una caja:** Módulo de Caja con apertura de turno, fondo inicial, movimientos extraordinarios y arqueo de diferencias.

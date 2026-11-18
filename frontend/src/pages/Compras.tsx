@@ -1,23 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { numberFromInput, validNumberInput } from '../utils/number-input';
-import { Truck, Plus, PackageCheck, FileText, CheckCircle2 } from 'lucide-react';
+import { Truck, Plus, PackageCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Tabs } from '../components/ui';
+import { SolicitudesCompra } from './SolicitudesCompra';
 
+// Purchasing: orders and receipts (COM-004 to COM-007) and internal requests with approval (COM-002, COM-003)
 export const Compras: React.FC = () => {
+  const { hasPermission } = useAuth();
+  const verOrdenes = hasPermission('COMPRAS', 'VER');
+  const [tab, setTab] = useState(verOrdenes ? 'ordenes' : 'solicitudes');
+  return (
+    <div className="max-w-7xl mx-auto p-6 space-y-4">
+      {verOrdenes && (
+        <Tabs tabs={[{ id: 'ordenes', label: 'Órdenes y recepción' }, { id: 'solicitudes', label: 'Solicitudes internas' }]} active={tab} onChange={setTab} />
+      )}
+      {tab === 'ordenes' ? <OrdenesCompra /> : <SolicitudesCompra />}
+    </div>
+  );
+};
+
+// Purchase orders and goods receipts
+const OrdenesCompra: React.FC = () => {
   const [ordenes, setOrdenes] = useState<any[]>([]);
   const [proveedores, setProveedores] = useState<any[]>([]);
   const [bodegas, setBodegas] = useState<any[]>([]);
   const [productos, setProductos] = useState<any[]>([]);
 
-  // Modal Nueva Orden
+  // New order modal
   const [modalNuevaOrden, setModalNuevaOrden] = useState(false);
   const [proveedorId, setProveedorId] = useState('');
   const [bodegaId, setBodegaId] = useState('');
   const [itemsOrden, setItemsOrden] = useState<Array<{ productId: string; cantidadSolicitada: number | string; precioUnitario: number | string }>>([
-    { productId: '', cantidadSolicitada: 10, precioUnitario: 500 },
+    { productId: '', cantidadSolicitada: '', precioUnitario: '' },
   ]);
 
-  // Modal Recepción
+  // Receipt modal
   const [modalRecepcion, setModalRecepcion] = useState(false);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<any | null>(null);
   const [facturaProveedor, setFacturaProveedor] = useState('');
@@ -44,7 +63,11 @@ export const Compras: React.FC = () => {
     cargarDatos();
   }, []);
 
-  // Crear Orden de Compra
+  // Immutable update of one order line
+  const setLinea = (idx: number, cambios: Partial<(typeof itemsOrden)[number]>) =>
+    setItemsOrden((items) => items.map((it, i) => (i === idx ? { ...it, ...cambios } : it)));
+
+  // Create a purchase order
   const handleCrearOrden = async () => {
     if (!proveedorId || !bodegaId || itemsOrden.some((it) => !it.productId || !validNumberInput(it.cantidadSolicitada) || numberFromInput(it.cantidadSolicitada) <= 0 || !validNumberInput(it.precioUnitario))) {
       alert('Complete proveedor, bodega y productos con cantidades válidas');
@@ -66,7 +89,7 @@ export const Compras: React.FC = () => {
     }
   };
 
-  // Abrir Modal de Recepción
+  // Open the receipt modal
   const abrirRecepcion = (ord: any) => {
     setOrdenSeleccionada(ord);
     setFacturaProveedor('');
@@ -83,7 +106,7 @@ export const Compras: React.FC = () => {
     setModalRecepcion(true);
   };
 
-  // Confirmar Recepción
+  // Confirm the receipt
   const handleConfirmarRecepcion = async () => {
     if (!ordenSeleccionada) return;
     if (itemsRecepcion.some(it => !validNumberInput(it.cantidadRecibida))) {
@@ -115,8 +138,8 @@ export const Compras: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Barra de título y botón crear */}
+    <div className="space-y-6">
+      {/* Title bar and create button */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-between items-center">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center space-x-2">
@@ -137,7 +160,7 @@ export const Compras: React.FC = () => {
         </button>
       </div>
 
-      {/* Lista de Órdenes de Compra */}
+      {/* Purchase order list */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-sm font-bold text-gray-800">Órdenes de Compra Registradas</h3>
@@ -197,7 +220,7 @@ export const Compras: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL NUEVA ORDEN DE COMPRA */}
+      {/* NEW PURCHASE ORDER MODAL */}
       {modalNuevaOrden && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
@@ -239,7 +262,7 @@ export const Compras: React.FC = () => {
               </div>
             </div>
 
-            {/* Ítems de la orden */}
+            {/* Order items */}
             <div className="border rounded-lg p-3 space-y-2 max-h-52 overflow-y-auto">
               <span className="text-xs font-bold text-gray-600 uppercase">Productos a Ordenar</span>
               {itemsOrden.map((it, idx) => (
@@ -247,9 +270,9 @@ export const Compras: React.FC = () => {
                   <select
                     value={it.productId}
                     onChange={(e) => {
-                      const newItems = [...itemsOrden];
-                      newItems[idx].productId = e.target.value;
-                      setItemsOrden(newItems);
+                      // Selecting a product pre-fills its current cost; it can still be negotiated
+                      const prod = productos.find((p) => p.id === e.target.value);
+                      setLinea(idx, { productId: e.target.value, precioUnitario: prod ? Number(prod.costo) : '' });
                     }}
                     className="col-span-6 border rounded p-1.5 text-xs"
                   >
@@ -263,11 +286,7 @@ export const Compras: React.FC = () => {
                   <input
                     type="number"
                     value={it.cantidadSolicitada}
-                    onChange={(e) => {
-                      const newItems = [...itemsOrden];
-                      newItems[idx].cantidadSolicitada = e.target.value;
-                      setItemsOrden(newItems);
-                    }}
+                    onChange={(e) => setLinea(idx, { cantidadSolicitada: e.target.value })}
                     placeholder="Cant."
                     className="col-span-3 border rounded p-1.5 text-xs"
                     min={0.001}
@@ -276,11 +295,7 @@ export const Compras: React.FC = () => {
                   <input
                     type="number"
                     value={it.precioUnitario}
-                    onChange={(e) => {
-                      const newItems = [...itemsOrden];
-                      newItems[idx].precioUnitario = e.target.value;
-                      setItemsOrden(newItems);
-                    }}
+                    onChange={(e) => setLinea(idx, { precioUnitario: e.target.value })}
                     placeholder="Costo"
                     className="col-span-3 border rounded p-1.5 text-xs"
                     min={0}
@@ -291,7 +306,7 @@ export const Compras: React.FC = () => {
               <button
                 type="button"
                 onClick={() =>
-                  setItemsOrden([...itemsOrden, { productId: '', cantidadSolicitada: 10, precioUnitario: 500 }])
+                  setItemsOrden([...itemsOrden, { productId: '', cantidadSolicitada: '', precioUnitario: '' }])
                 }
                 className="text-xs text-emerald-600 hover:underline flex items-center space-x-1 mt-2"
               >
@@ -318,7 +333,7 @@ export const Compras: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL RECEPCIÓN DE MERCADERÍA */}
+      {/* GOODS RECEIPT MODAL */}
       {modalRecepcion && ordenSeleccionada && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
@@ -340,7 +355,7 @@ export const Compras: React.FC = () => {
               />
             </div>
 
-            {/* Comparativa Ordenado vs Recibido (COM-006) */}
+            {/* Ordered vs received comparison (COM-006) */}
             <div className="space-y-2">
               <span className="text-xs font-bold text-gray-600 uppercase">Artículos Recibidos</span>
               {itemsRecepcion.map((it: any, idx) => (

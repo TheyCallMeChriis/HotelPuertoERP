@@ -54,7 +54,7 @@ npm install
 
 2. **Aplicar Migraciones / Estructura del Modelo:**
    ```bash
-   npm run prisma:push
+   npm --prefix backend run prisma:deploy
    ```
 
 3. **Cargar Datos Iniciales (Seed Obligatorio):**

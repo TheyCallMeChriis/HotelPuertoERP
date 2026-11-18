@@ -64,24 +64,9 @@ npm --prefix backend run permissions:sync
 
 ## Iniciar en Windows
 
-Con PostgreSQL ya disponible:
+Doble clic en `iniciar.bat`. El script inicia PostgreSQL (ruta configurada al inicio del archivo), instala dependencias faltantes, aplica las migraciones pendientes, sincroniza permisos, abre las ventanas "POS-ERP Backend" y "POS-ERP Frontend" y abre el navegador en http://127.0.0.1:3000.
 
-```powershell
-./start_servers.ps1 -CheckOnly
-./start_servers.ps1
-```
-
-También puede usarse `start_servers.bat`. Ambos parten de la carpeta del proyecto, independientemente de la carpeta desde la que se ejecuten. Los servidores se inician en segundo plano y sus logs están en `tmp/server-logs`. El script comprueba la API y el puerto del frontend antes de anunciar el inicio; esa comprobación no valida operaciones de la base de datos.
-
-Para que el script inicie la base:
-
-```powershell
-./start_servers.ps1 -Database Docker
-# Instalación local propia: sustituir ambas rutas por las de esa instalación.
-./start_servers.ps1 -Database Local -PgCtl 'C:/PostgreSQL/bin/pg_ctl.exe' -PgData 'C:/PostgreSQL/data'
-```
-
-La opción local también acepta las variables `PG_CTL` y `PGDATA`. No inicializa ni modifica una carpeta de datos existente. El modo predeterminado `External` no intenta iniciar PostgreSQL.
+Para detener todo: doble clic en `detener.bat` (cierra backend, frontend y PostgreSQL).
 
 Alternativamente, abrir dos terminales:
 

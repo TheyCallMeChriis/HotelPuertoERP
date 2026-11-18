@@ -1,5 +1,9 @@
+// HTTP client for the backend API. Every call returns { success, data, message } and never throws,
+// so screens can show the server message directly. Requests go through the Vite proxy at /api.
+
 const API_BASE = '/api';
 
+// Builds "?a=1&b=2" skipping undefined, null and empty values (false and 0 are kept)
 function queryString(params?: Record<string, unknown>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -10,6 +14,7 @@ function queryString(params?: Record<string, unknown>): string {
   return encoded ? `?${encoded}` : '';
 }
 
+// Session token storage (the token is a signed JWT; the server re-checks permissions on every call)
 export function getAuthToken(): string | null {
   return localStorage.getItem('pos_token');
 }
@@ -23,6 +28,7 @@ export function removeAuthToken(): void {
   localStorage.removeItem('pos_user');
 }
 
+// Sends a request with the session token and normalizes success and error responses.
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
@@ -44,6 +50,11 @@ export async function apiRequest<T = any>(
     });
 
     const data = await res.json();
+    // SEG-005: expired or invalid session → back to the login screen
+    if (token && res.status === 401) {
+      removeAuthToken();
+      window.dispatchEvent(new Event('auth:expired'));
+    }
     if (!res.ok) {
       return {
         success: false,
@@ -61,31 +72,62 @@ export async function apiRequest<T = any>(
   }
 }
 
+// Typed shortcuts per backend module
 export const api = {
-  // Autenticación
+  // Authentication
   auth: {
     login: (body: { username: string; password: string }) =>
       apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
     getMe: () => apiRequest('/auth/me'),
+    logout: () => apiRequest('/auth/logout', { method: 'POST' }),
+    getSetup: () => apiRequest('/auth/setup'),
+    setup: (body: { username: string; nombre: string; email: string; password: string; codigo?: string }) =>
+      apiRequest('/auth/setup', { method: 'POST', body: JSON.stringify(body) }),
+    cambiarPassword: (actual: string, nueva: string) =>
+      apiRequest('/auth/password', { method: 'PUT', body: JSON.stringify({ actual, nueva }) }),
   },
 
-  // Catálogos
+  // Catalogs (lookups for operations and master catalog maintenance)
   catalogos: {
-    getProductos: (params?: { busqueda?: string; categoriaId?: string }) => {
-      return apiRequest(`/catalogos/productos${queryString(params)}`);
-    },
-    getCategorias: () => apiRequest('/catalogos/categorias'),
-    getClientes: (busqueda?: string) =>
-      apiRequest(`/catalogos/clientes${busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : ''}`),
-    createCliente: (body: any) =>
-      apiRequest('/catalogos/clientes', { method: 'POST', body: JSON.stringify(body) }),
-    getProveedores: () => apiRequest('/catalogos/proveedores'),
-    getBodegas: () => apiRequest('/catalogos/bodegas'),
-    getPuntosVenta: () => apiRequest('/catalogos/puntos-venta'),
+    getProductos: (params?: { busqueda?: string; categoriaId?: string; todos?: boolean }) =>
+      apiRequest(`/catalogos/productos${queryString(params)}`),
+    getCategorias: (params?: { todos?: boolean }) => apiRequest(`/catalogos/categorias${queryString(params)}`),
+    getClientes: (busqueda?: string, todos?: boolean) =>
+      apiRequest(`/catalogos/clientes${queryString({ busqueda, todos })}`),
+    getProveedores: (params?: { todos?: boolean; busqueda?: string }) =>
+      apiRequest(`/catalogos/proveedores${queryString(params)}`),
+    getBodegas: (params?: { todos?: boolean }) => apiRequest(`/catalogos/bodegas${queryString(params)}`),
+    getCajas: (params?: { todos?: boolean }) => apiRequest(`/catalogos/cajas${queryString(params)}`),
+    getDepartamentos: (params?: { todos?: boolean }) => apiRequest(`/catalogos/departamentos${queryString(params)}`),
+    getPuntosVenta: (params?: { todos?: boolean }) => apiRequest(`/catalogos/puntos-venta${queryString(params)}`),
     getFormasPago: () => apiRequest('/catalogos/formas-pago'),
+    // Generic create/update: resource = productos | categorias | clientes | proveedores | bodegas | cajas | departamentos | puntos-venta
+    crear: (recurso: string, body: any) =>
+      apiRequest(`/catalogos/${recurso}`, { method: 'POST', body: JSON.stringify(body) }),
+    actualizar: (recurso: string, id: string, body: any) =>
+      apiRequest(`/catalogos/${recurso}/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   },
 
-  // Caja y Turnos
+  // User, role and permission administration
+  admin: {
+    getUsuarios: (params?: { busqueda?: string; estado?: string }) => apiRequest(`/admin/usuarios${queryString(params)}`),
+    createUsuario: (body: any) => apiRequest('/admin/usuarios', { method: 'POST', body: JSON.stringify(body) }),
+    updateUsuario: (id: string, body: any) =>
+      apiRequest(`/admin/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    resetPassword: (id: string, password: string) =>
+      apiRequest(`/admin/usuarios/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+    getRoles: () => apiRequest('/admin/roles'),
+    createRol: (body: any) => apiRequest('/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
+    updateRol: (id: string, body: any) => apiRequest(`/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    setPermisosRol: (id: string, permissionIds: string[]) =>
+      apiRequest(`/admin/roles/${id}/permisos`, { method: 'PUT', body: JSON.stringify({ permissionIds }) }),
+    getPermisos: () => apiRequest('/admin/permisos'),
+    getParametros: () => apiRequest('/admin/parametros'),
+    updateParametro: (clave: string, valor: string) =>
+      apiRequest(`/admin/parametros/${clave}`, { method: 'PUT', body: JSON.stringify({ valor }) }),
+  },
+
+  // Cash registers and shifts
   caja: {
     getTurnoActivo: (cajaId?: string) =>
       apiRequest(`/caja/turno-activo${cajaId ? `?cajaId=${cajaId}` : ''}`),
@@ -99,7 +141,7 @@ export const api = {
       apiRequest(`/caja/historico${cajaId ? `?cajaId=${cajaId}` : ''}`),
   },
 
-  // Ventas (POS)
+  // Sales (POS)
   ventas: {
     createVenta: (body: any) =>
       apiRequest('/ventas', { method: 'POST', body: JSON.stringify(body) }),
@@ -107,11 +149,20 @@ export const api = {
       return apiRequest(`/ventas${queryString(params)}`);
     },
     getVentaById: (id: string) => apiRequest(`/ventas/${id}`),
+    // Suspended sales (POS-006)
+    getSuspendidas: (pointOfSaleId: string) => apiRequest(`/ventas/suspendidas${queryString({ pointOfSaleId })}`),
+    suspender: (body: any) => apiRequest('/ventas/suspendidas', { method: 'POST', body: JSON.stringify(body) }),
+    descartarSuspendida: (id: string, motivo?: string) =>
+      apiRequest(`/ventas/suspendidas/${id}`, { method: 'DELETE', body: JSON.stringify({ motivo: motivo ?? '' }) }),
     anularVenta: (id: string, motivo: string) =>
       apiRequest(`/ventas/${id}/anular`, { method: 'POST', body: JSON.stringify({ motivo }) }),
+    // Credit notes (FAC-005) and recorded reprints (FAC-006)
+    notaCredito: (id: string, body: any) => apiRequest(`/ventas/${id}/nota-credito`, { method: 'POST', body: JSON.stringify(body) }),
+    reimprimir: (id: string) => apiRequest(`/ventas/${id}/reimpresion`, { method: 'POST' }),
+    reimprimirNota: (id: string) => apiRequest(`/ventas/notas-credito/${id}/reimpresion`, { method: 'POST' }),
   },
 
-  // Inventarios y Kardex
+  // Inventory and stock ledger
   inventario: {
     getExistencias: (params?: { warehouseId?: string; soloBajoMinimo?: boolean }) => {
       return apiRequest(`/inventario/existencias${queryString(params)}`);
@@ -124,9 +175,22 @@ export const api = {
       apiRequest('/inventario/traslado', { method: 'POST', body: JSON.stringify(body) }),
     realizarAjuste: (body: any) =>
       apiRequest('/inventario/ajuste', { method: 'POST', body: JSON.stringify(body) }),
+    // Physical inventory count (INV-007)
+    getTomas: (params?: { warehouseId?: string; estado?: string }) => apiRequest(`/inventario/tomas${queryString(params)}`),
+    getToma: (id: string) => apiRequest(`/inventario/tomas/${id}`),
+    iniciarToma: (body: { warehouseId: string; notas?: string }) =>
+      apiRequest('/inventario/tomas', { method: 'POST', body: JSON.stringify(body) }),
+    guardarConteos: (id: string, conteos: Array<{ productId: string; cantidadContada: string | number | null }>) =>
+      apiRequest(`/inventario/tomas/${id}/conteos`, { method: 'PUT', body: JSON.stringify({ conteos }) }),
+    aplicarToma: (id: string, motivo?: string) =>
+      apiRequest(`/inventario/tomas/${id}/aplicar`, { method: 'POST', body: JSON.stringify({ motivo: motivo || null }) }),
+    anularToma: (id: string, motivo: string) =>
+      apiRequest(`/inventario/tomas/${id}/anular`, { method: 'POST', body: JSON.stringify({ motivo }) }),
+    configurarNiveles: (body: { warehouseId: string; productId: string; stockMinimo: number; stockMaximo?: number }) =>
+      apiRequest('/inventario/niveles', { method: 'PUT', body: JSON.stringify(body) }),
   },
 
-  // Compras
+  // Purchasing
   compras: {
     createOrden: (body: any) =>
       apiRequest('/compras/ordenes', { method: 'POST', body: JSON.stringify(body) }),
@@ -135,9 +199,18 @@ export const api = {
     },
     registrarRecepcion: (body: any) =>
       apiRequest('/compras/recepciones', { method: 'POST', body: JSON.stringify(body) }),
+    // Internal requests with approval (COM-002, COM-003)
+    getSolicitudes: (estado?: string) => apiRequest(`/compras/solicitudes${queryString({ estado })}`),
+    crearSolicitud: (body: any) => apiRequest('/compras/solicitudes', { method: 'POST', body: JSON.stringify(body) }),
+    revisarSolicitud: (id: string, body: { decision: 'APROBAR' | 'RECHAZAR'; comentario?: string | null }) =>
+      apiRequest(`/compras/solicitudes/${id}/revision`, { method: 'POST', body: JSON.stringify(body) }),
+    cancelarSolicitud: (id: string, motivo: string) =>
+      apiRequest(`/compras/solicitudes/${id}/cancelar`, { method: 'POST', body: JSON.stringify({ motivo }) }),
+    convertirSolicitud: (id: string, body: any) =>
+      apiRequest(`/compras/solicitudes/${id}/convertir`, { method: 'POST', body: JSON.stringify(body) }),
   },
 
-  // Integración Hotelera / PMS
+  // Hotel integration / PMS
   pms: {
     getHabitacionesOcupadas: () => apiRequest('/pms/habitaciones'),
     enviarCargo: (body: any) =>
@@ -147,19 +220,26 @@ export const api = {
     getConciliacion: () => apiRequest('/pms/conciliacion'),
   },
 
-  // Reportes y Dashboard
-  reportes: {
-    getDashboardKPIs: () => apiRequest('/reportes/dashboard'),
-    getVentas: (params?: any) => {
-      return apiRequest(`/reportes/ventas${queryString(params)}`);
-    },
-    getFormasPago: (params?: any) => {
-      return apiRequest(`/reportes/formas-pago${queryString(params)}`);
-    },
-    getDiferenciasCaja: () => apiRequest('/reportes/caja-diferencias'),
+  // Accounts receivable (CLI-005, CLI-006)
+  cxc: {
+    getClientes: (fechaCorte?: string) => apiRequest(`/cxc/clientes${fechaCorte ? `?fechaCorte=${fechaCorte}` : ''}`),
+    getEstadoCuenta: (id: string, fechaCorte?: string) =>
+      apiRequest(`/cxc/clientes/${id}/estado-cuenta${fechaCorte ? `?fechaCorte=${fechaCorte}` : ''}`),
+    getAntiguedad: (fechaCorte?: string) => apiRequest(`/cxc/antiguedad${fechaCorte ? `?fechaCorte=${fechaCorte}` : ''}`),
+    registrarAbono: (body: any) => apiRequest('/cxc/abonos', { method: 'POST', body: JSON.stringify(body) }),
+    anularAbono: (id: string, motivo: string) =>
+      apiRequest(`/cxc/abonos/${id}/anular`, { method: 'POST', body: JSON.stringify({ motivo }) }),
   },
 
-  // Auditoría
+  // Reports and dashboard
+  reportes: {
+    getDashboardKPIs: () => apiRequest('/reportes/dashboard'),
+    // Generic reports: ventas, formas-pago, productos-vendidos, existencias, kardex, compras, cierres-caja, opciones
+    get: (reporte: string, params?: Record<string, unknown>) =>
+      apiRequest(`/reportes/${reporte}${queryString(params)}`) as Promise<{ success: boolean; data?: any; message?: string; resumen?: any }>,
+  },
+
+  // Audit log
   auditoria: {
     getBitacora: (params?: any) => {
       const q = new URLSearchParams(params).toString();

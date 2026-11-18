@@ -1,15 +1,16 @@
+// Audit log screen (SEG-003): latest events filtered by action and entity.
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import { ShieldCheck, Search, Filter, Clock, User, FileCode } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
+// Audit log viewer for ADMINISTRADOR and AUDITOR
 export const Auditoria: React.FC = () => {
   const [registros, setRegistros] = useState<any[]>([]);
   const [accionFiltro, setAccionFiltro] = useState('');
   const [entidadFiltro, setEntidadFiltro] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const cargarBitacora = async () => {
-    setLoading(true);
     const res = await api.auditoria.getBitacora({
       accion: accionFiltro || undefined,
       entidad: entidadFiltro || undefined,
@@ -17,7 +18,6 @@ export const Auditoria: React.FC = () => {
     if (res.success) {
       setRegistros(res.data || []);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export const Auditoria: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Encabezado */}
+      {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         <h2 className="text-base font-bold text-gray-900 flex items-center space-x-2">
           <ShieldCheck className="w-5 h-5 text-emerald-600" />
@@ -37,7 +37,7 @@ export const Auditoria: React.FC = () => {
         </p>
       </div>
 
-      {/* Filtros */}
+      {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-wrap gap-4 items-center">
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Filtrar por Acción:</label>
@@ -84,7 +84,7 @@ export const Auditoria: React.FC = () => {
         </button>
       </div>
 
-      {/* Tabla de Auditoría */}
+      {/* Audit table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-xs">

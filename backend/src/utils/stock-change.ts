@@ -1,8 +1,9 @@
+// Atomic stock updates.
 import { Prisma } from '@prisma/client';
 import { operationError } from './operation-validation';
 
-// Debe ejecutarse dentro de la misma transacción que el documento y su Kardex.
-// El decremento condicionado comprueba y modifica el saldo en una única escritura.
+// Must run inside the same transaction as the document and its ledger entry.
+// The conditional decrement checks and updates the balance in a single write.
 export async function changeStock(
   tx: Prisma.TransactionClient,
   warehouseId: string,
@@ -20,7 +21,7 @@ export async function changeStock(
       data: { cantidad: { decrement: change.negated() } },
     });
     if (result.count !== 1) throw operationError('Existencias insuficientes. La operación no se ha aplicado.');
-    // La escritura mantiene el bloqueo de esta fila hasta terminar la transacción.
+    // The write keeps this row locked until the transaction ends.
     const stock = await tx.stock.findUniqueOrThrow({ where });
     saldoNuevo = stock.cantidad;
   } else {

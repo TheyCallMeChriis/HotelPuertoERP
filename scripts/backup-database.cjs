@@ -1,4 +1,4 @@
-// Respaldo lógico sin colocar credenciales en los argumentos del proceso.
+// Logical backup that never places credentials in the process arguments.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, '..');
 require('../backend/node_modules/dotenv').config({ path: path.join(root, 'backend/.env'), quiet: true });
 const { PrismaClient } = require('../backend/node_modules/@prisma/client');
 
+// Usage: node scripts/backup-database.cjs "<PostgreSQL bin folder>"
+// Creates tmp/backups/<timestamp>/database.dump plus a manifest with row counts and SHA-256.
 async function main() {
   const pgBin = process.argv[2];
   if (!pgBin || !fs.existsSync(path.join(pgBin, 'pg_dump.exe'))) throw Error('Indique la carpeta bin de PostgreSQL');
